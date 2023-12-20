@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Create a Volume from scratch and attach it to an instance.
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterLabels:
+        InstanceId: {default: Target Instance Id}
+        AvailabilityZone: {default: Availability Zone of the target Instance}
+        DeviceId: {default: Device Id to allocate in the target Instance}
+        SizeInGB: {default: Size (in GiB) of the Volume to create}
+        VolumeType: {default: Type of the Volume to create}
+        Iops: {default: 'Iops to provision, if io1'}
+        KmsKeyId: {default: KMS Key to use to Encrypt Volume}
+        SnapshotId: {default: Snapshot to restore}
+        PersistToSnapshot: {default: Save Snapshot on Deletion of this Stack}
+    ParameterGroups:
+      - Label: {default: Instance Information}
+        Parameters:
+          - InstanceId
+          - AvailabilityZone
+          - DeviceId
+      - Label: {default: Volume Information}
+        Parameters:
+          - SizeInGB
+          - VolumeType
+          - Iops
+          - KmsKeyId
+          - SnapshotId
+          - PersistToSnapshot
+ 
+Parameters:
+  InstanceId:
+    Type: AWS::EC2::Instance::Id
+  AvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+    Description: Instance Availability Zone
+  DeviceId:
+    Type: String
+    Description: Unused device (Instance and OS Specific)
+    Default: /dev/xvdb
+  SizeInGB:
+    Type: Number
+    Description: Size in GB
+    MinValue: 1
+    MaxValue: 16384
+    Default: 10
+  VolumeType:
+    Type: String
+    Description: minimum sizes dictated by types
+    Default: gp2
+    AllowedValues:
+      - io1  # 4 GiB min
+      - gp2  # 1 GiB min
+      - sc1  # 500 GiB min
+      - st1  # 500 GiB min
+      - standard
+  KmsKeyId:
+    Type: AWS::KMS::Alias::TargetKeyId
+    Description: blank for no Encryption
+    Default: ''
+  Iops:
+    Type: Number
+    MinValue: 100
+    MaxValue: 20000
+    Description: Only if io1, max 500 Iops/GiB
+    Default: 2000  # max for 4 GiB
+  SnapshotId:
+    Type: String
+    Description: bland for unformatted Volume
+    Default: ''
+  PersistToSnapshot:
+    Type: String
+    AllowedValues: ['YES', 'NO']
+    Default: 'NO'
+
+Conditions:
+
+  NotEncrypted: !Equals ['', !Ref KmsKeyId]
+  IsIo1: !Equals ['io1', !Ref VolumeType]
+  NoSnapshotId: !Equals ['', !Ref SnapshotId]
+  PersistToSnapshot: !Equals ['YES', !Ref PersistToSnapshot]
+  DoNotPersistToSnapshot: !Equals ['NO', !Ref PersistToSnapshot]
+
+
+Resources:
+
+  VolumeWillSnapshot:
+    Type: AWS::EC2::Volume
+    Condition: PersistToSnapshot
+    DeletionPolicy: Snapshot
+    Properties:
+      AutoEnableIO: true  # immediate, even if corrupted
+      AvailabilityZone: !Ref AvailabilityZone
+      Encrypted: !If [NotEncrypted, !Ref 'AWS::NoValue', true]
+      KmsKeyId: !If [NotEncrypted, !Ref 'AWS::NoValue', !Ref KmsKeyId]
+      Size: !Ref SizeInGB
+      Iops: !If [IsIo1, !Ref Iops, !Ref 'AWS::NoValue']
+      SnapshotId: !If [NoSnapshotId, !Ref 'AWS::NoValue', !Ref SnapshotId]
+
+  VolumeWillDelete:
+    Type: AWS::EC2::Volume
+    Condition: DoNotPersistToSnapshot
+    DeletionPolicy: Delete
+    Properties:
+      AutoEnableIO: true  # immediate, even if corrupted
+      AvailabilityZone: !Ref AvailabilityZone
+      Encrypted: !If [NotEncrypted, !Ref 'AWS::NoValue', true]
+      KmsKeyId: !If [NotEncrypted, !Ref 'AWS::NoValue', !Ref KmsKeyId]
+      Size: !Ref SizeInGB
+      Iops: !If [IsIo1, !Ref Iops, !Ref 'AWS::NoValue']
+      SnapshotId: !If [NoSnapshotId, !Ref 'AWS::NoValue', !Ref SnapshotId]
+
+  Attachment:
+    Type:  AWS::EC2::VolumeAttachment
+    Properties:
+      Device: !Ref DeviceId
+      InstanceId: !Ref InstanceId
+      VolumeId: !If [PersistToSnapshot, !Ref VolumeWillSnapshot, !Ref VolumeWillDelete]
