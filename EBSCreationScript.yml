@@ -54,7 +54,7 @@ Parameters:
       - st1  # 500 GiB min
       - standard
   KmsKeyId:
-    Type: AWS::KMS::Alias::TargetKeyId
+    Type: String
     Description: blank for no Encryption
     Default: ''
   Iops:
@@ -65,7 +65,7 @@ Parameters:
     Default: 2000  # max for 4 GiB
   SnapshotId:
     Type: String
-    Description: bland for unformatted Volume
+    Description: blank for unformatted Volume
     Default: ''
   PersistToSnapshot:
     Type: String
