@@ -17,7 +17,7 @@ Mappings:
     image:
       # amiid = ami-XXXXXXXXXXX the image id you wish to standup (amiid: ami-398r4thruehr9wje03)
 #      amiid: ami-08376bde4756a154f
-      amiid: ami-079db87dc4c10ac91
+      amiid: 
       type: t2.micro
       # type = the instance type you would like to stand up (type: m4.large)
 #      type: m5.xlarge
@@ -28,14 +28,14 @@ Mappings:
     
     networking:
       # subnet = the subnet in the vpc that you want to stand up the instance within (subnet: subnet-3a4hk343vb34234f)
-      subnet: subnet-03ede95fc77c5848b
+      subnet:
       # securityGroup1 = the security group that corresponds to your vpc to stand up your instance - it is reqired that all instances must have a uscis_security_group attached (securityGroup1: sg687584)"
-      securityGroup1: sg-0fc763cfed9261534
-      VpcId: vpc-0c57372fa5ef32a7f
-      RouteTableId: rtb-0343c014ab2fe1d70
+      securityGroup1: 
+      VpcId: 
+      RouteTableId: 
     keys:
       # launchKey = the keypair you will use to login to your newly created instance (launchKey: my-instance-key)
-      launchKey: MyPersonal
+      launchKey: 
     Tags:
 #      Name: 'STIG_Python_EC2'
 #      ServerFunction: 'python-app-vm'
