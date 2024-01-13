@@ -1,0 +1,449 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'AWS EC2 Machine for Kali VM's'
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+    - Label:
+        default: 'Parent Stacks'
+      Parameters:
+      - ParentAlertStack
+    - Label:
+        default: 'KMS Parameters'
+      Parameters:
+      - Service
+      
+Mappings:
+  constants:
+    image:
+      # amiid = ami-XXXXXXXXXXX the image id you wish to standup (amiid: ami-398r4thruehr9wje03)
+      amiid: ami-08376bde4756a154f
+      # type = the instance type you would like to stand up (type: m4.large)
+      type: m5.xlarge
+      # storage = the amount of storage you need on your machine (storage: 150GB)
+      storage: 8
+      # storageClass = the type of EBS volume you need - standard is gp2 (storageClass: gp2)
+      storageClass: standard
+    
+    networking:
+      # subnet = the subnet in the vpc that you want to stand up the instance within (subnet: subnet-3a4hk343vb34234f)
+      subnet: Setondji
+      # securityGroup1 = the security group that corresponds to your vpc to stand up your instance - it is reqired that all instances must have a uscis_security_group attached (securityGroup1: sg687584)"
+      securityGroup1: Setondji
+    keys:
+      # launchKey = the keypair you will use to login to your newly created instance (launchKey: my-instance-key)
+      launchKey: Setondji
+    Tags:
+#      Name: 'STIG_Python_EC2'
+#      ServerFunction: 'python-app-vm'
+      System: 'Isd/ACOB'
+      Environment: 'NonProd'
+      FismaId: 'CIS-00000-GSS-00000'
+      POC: 'ACOBCloudAdmins@uscis.dhs.gov'
+      Scheduler: 1100;0100;utc;weekdays
+
+Parameters:
+  ParentAlertStack:
+    Description: 'Optional but recommended stack name of parent alert stack based on operations/alert.yaml template.'
+    Type: String
+    Default: ''
+  Service:
+    Description: 'Which AWS service is allowed to use this CMK?'
+    Type: String
+    AllowedValues:
+    - 'ALL_SERVICES'
+    - connect
+    - dms
+    - ssm
+    - ec2
+    - elasticfilesystem
+    - es
+    - kinesis
+    - kinesisvideo
+    - lambda
+    - lex
+    - redshift
+    - rds
+    - secretsmanager
+    - ses
+    - s3
+    - importexport
+    - sqs
+    - workmail
+    - workspaces
+    Default: ALL_SERVICES
+  SizeInGB:
+    Type: Number
+    Description: Size in GB
+    MinValue: 1
+    MaxValue: 16384
+    Default: 10
+  VolumeType:
+    Type: String
+    Description: minimum sizes dictated by types
+    Default: gp2
+    AllowedValues:
+      - io1  # 4 GiB min
+      - gp2  # 1 GiB min
+      - sc1  # 500 GiB min
+      - st1  # 500 GiB min
+      - standard
+  Iops:
+    Type: Number
+    MinValue: 100
+    MaxValue: 20000
+    Description: Only if io1, max 500 Iops/GiB
+    Default: 2000  # max for 4 GiB
+  SnapshotId:
+    Type: String
+    Description: blank for unformatted Volume
+    Default: ''
+  PersistToSnapshot:
+    Type: String
+    AllowedValues: ['YES', 'NO']
+    Default: 'NO'
+  AvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+  myUserData:
+    Type: String
+    Default: |
+        #!/bin/bash
+
+        unset http_proxy
+        unset https_proxy
+
+        # Variable to be stored if required
+        proxy_domain='Setondji'
+        proxy_port='Setondji'
+
+        # Enter the Proxy Domain Name which was created in the Output of Cloudformation Stack 
+        echo "Enter the Proxy Domain Name: "
+        read proxy_domain
+        echo "Proxy Domain Name : ${proxy_domain}"
+
+        # Enter the Proxy Port Number which was created in the Output of Cloudformation Stack 
+        echo "Enter the Proxy Port Number: "
+        read proxy_port
+
+        # Validation of the Port Number, it should be Numeric with 4 Digit
+        reg='^[0-9]{4}$'
+        if [[ ! $proxy_port =~ $reg ]]; then
+          echo 'Format of Proxy Pory is Wrong, It should be 4 digit Numeric'
+          exit 0
+        else
+           echo "Proxy Port Number : ${proxy_port}"
+        fi
+
+        # Printing the URL of Proxy Domain and Port
+        echo "Domain Proxy URL - http://${proxy_domain}:${proxy_port}"
+
+        # Setting the Environment Variable
+        export http_proxy=http://${proxy_domain}:${proxy_port}
+        export https_proxy=http://${proxy_domain}:${proxy_port}
+
+        # Appending the Proxy Configuration to bashrc file
+        echo "export http_proxy=http://${proxy_domain}:${proxy_port}" >> ~/.bashrc
+        echo "export https_proxy=http://${proxy_domain}:${proxy_port}" >> ~/.bashrc
+
+        # Appending the Proxy Configuration to bash_profile file
+        echo "export http_proxy=http://${proxy_domain}:${proxy_port}" >> ~/.bash_profile
+        echo "export https_proxy=http://${proxy_domain}:${proxy_port}" >> ~/.bash_profile
+
+        # Appending the Proxy Configuration to profile file
+        echo "export http_proxy=http://${proxy_domain}:${proxy_port}" >> ~/.profile
+        echo "export https_proxy=http://${proxy_domain}:${proxy_port}" >> ~/.profile
+
+        # Completion Message
+        echo "Proxy Configuration Completed Successfully"
+    
+Conditions:
+  HasAlertTopic: !Not [!Equals [!Ref ParentAlertStack, '']]
+  HasServiceAllServices: !Equals [!Ref Service, 'ALL_SERVICES']
+  IsIo1: !Equals ['io1', !Ref VolumeType]
+  NoSnapshotId: !Equals ['', !Ref SnapshotId]
+  
+Resources:
+  ACOBPenTestNProdAttackKali:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !FindInMap [constants, "image", "amiid"]
+      InstanceType: !FindInMap [constants, "image", "type"]
+      KeyName: !FindInMap [constants, "keys", "launchKey"]
+      AvailabilityZone: !Ref AvailabilityZone
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "false"
+          DeviceIndex: "0"
+          GroupSet:
+            -  !FindInMap [constants, "networking", "securityGroup1"]
+          SubnetId: !FindInMap [constants, "networking", "subnet"]
+
+      Tags:
+        - Key: Name
+          Value: 'acob-pentest-nprod-attack-kali' #!Join [ "-", [!FindInMap [constants, "Tags", Name],]]
+        - Key: ECS:ServerFunction
+          Value: 'acob-pentest-nprod-attack-kali' #!Join [ "-", [!FindInMap [constants, "Tags", ServerFunction],]]
+        - Key: ECS:System
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", System],]]
+        - Key: ECS:Environment
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", Environment],]]         
+        - Key: ECS:FismaId
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", FismaId],]]          
+        - Key: ECS:Poc
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", POC],]]         
+        - Key: ECS:Scheduler
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", Scheduler],]]         
+
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeType: !FindInMap [constants, "image", "storageClass"]
+            VolumeSize: !FindInMap [constants, "image", "storage"]
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData: !Ref myUserData
+            
+  ACOBPenTestNProdTestTargetKali:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: !FindInMap [constants, "image", "amiid"]
+      InstanceType: !FindInMap [constants, "image", "type"]
+      KeyName: !FindInMap [constants, "keys", "launchKey"]
+      AvailabilityZone: !Ref AvailabilityZone
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "false"
+          DeviceIndex: "0"
+          GroupSet:
+            -  !FindInMap [constants, "networking", "securityGroup1"]
+          SubnetId: !FindInMap [constants, "networking", "subnet"]
+
+      Tags:
+        - Key: Name
+          Value: 'acob-pentest-nprod-test-target-kali' #!Join [ "-", [!FindInMap [constants, "Tags", Name],]]
+        - Key: ECS:ServerFunction
+          Value: 'acob-pentest-nprod-test-target-kali' #!Join [ "-", [!FindInMap [constants, "Tags", ServerFunction],]]
+        - Key: ECS:System
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", System],]]
+        - Key: ECS:Environment
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", Environment],]]         
+        - Key: ECS:FismaId
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", FismaId],]]          
+        - Key: ECS:Poc
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", POC],]]         
+        - Key: ECS:Scheduler
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", Scheduler],]]         
+
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeType: !FindInMap [constants, "image", "storageClass"]
+            VolumeSize: !FindInMap [constants, "image", "storage"]
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData: !Ref myUserData
+ 
+  ACOBPenTestNProdAttackWindowsLatest2022:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: Setondji
+      InstanceType: !FindInMap [constants, "image", "type"]
+      KeyName: !FindInMap [constants, "keys", "launchKey"]
+      AvailabilityZone: !Ref AvailabilityZone
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: "false"
+          DeviceIndex: "0"
+          GroupSet:
+            -  !FindInMap [constants, "networking", "securityGroup1"]
+          SubnetId: !FindInMap [constants, "networking", "subnet"]
+
+      Tags:
+        - Key: Name
+          Value: 'acob-pentest-nprod-attack-windows-latest-2022' #!Join [ "-", [!FindInMap [constants, "Tags", Name],]]
+        - Key: ECS:ServerFunction
+          Value: 'acob-pentest-nprod-attack-windows-latest-2022' #!Join [ "-", [!FindInMap [constants, "Tags", ServerFunction],]]
+        - Key: ECS:System
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", System],]]
+        - Key: ECS:Environment
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", Environment],]]         
+        - Key: ECS:FismaId
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", FismaId],]]          
+        - Key: ECS:Poc
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", POC],]]         
+        - Key: ECS:Scheduler
+          Value: !Join [ "-", [!FindInMap [constants, "Tags", Scheduler],]]         
+
+      BlockDeviceMappings:
+        - DeviceName: "/dev/sda1"
+          Ebs:
+            VolumeType: !FindInMap [constants, "image", "storageClass"]
+            VolumeSize: !FindInMap [constants, "image", "storage"]
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData: !Ref myUserData
+
+  ACOBPenTestNProdEBSKey:
+    DeletionPolicy: Retain
+    Type: 'AWS::KMS::Key'
+    Properties:
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+          Action: 'kms:*'
+          Resource: '*'
+        - Effect: Allow
+          Principal:
+            AWS: '*'
+          Action:
+          - 'kms:Encrypt'
+          - 'kms:Decrypt'
+          - 'kms:ReEncrypt*'
+          - 'kms:GenerateDataKey*'
+          - 'kms:CreateGrant'
+          - 'kms:ListGrants'
+          - 'kms:DescribeKey'
+          Resource: '*'
+          Condition:
+            StringEquals: !If
+            - HasServiceAllServices
+            - 'kms:CallerAccount': !Ref 'AWS::AccountId'
+            - 'kms:CallerAccount': !Ref 'AWS::AccountId'
+              'kms:ViaService': !Sub '${Service}.${AWS::Region}.amazonaws.com'
+  EBSKeyAlias:
+    Type: 'AWS::KMS::Alias'
+    Properties:
+      AliasName: alias/acob-pentest-nprod-ebs-key
+      TargetKeyId: !Ref ACOBPenTestNProdEBSKey
+  
+  AttackKaliEBSVolume:
+    Type: 'AWS::EC2::Volume'
+    DeletionPolicy: Snapshot
+    Properties:
+      AutoEnableIO: true  # immediate, even if corrupted
+      AvailabilityZone: !Ref AvailabilityZone
+      Encrypted: true
+      KmsKeyId: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${EBSKeyAlias}'
+      Size: !Ref SizeInGB
+      Iops: !If [IsIo1, !Ref Iops, !Ref 'AWS::NoValue']
+      SnapshotId: !If [NoSnapshotId, !Ref 'AWS::NoValue', !Ref SnapshotId]
+
+  TestTargetEBSVolume:
+    Type: 'AWS::EC2::Volume'
+    DeletionPolicy: Snapshot
+    Properties:
+      AutoEnableIO: true  # immediate, even if corrupted
+      AvailabilityZone: !Ref AvailabilityZone
+      Encrypted: true
+      KmsKeyId: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${EBSKeyAlias}'
+      Size: !Ref SizeInGB
+      Iops: !If [IsIo1, !Ref Iops, !Ref 'AWS::NoValue']
+      SnapshotId: !If [NoSnapshotId, !Ref 'AWS::NoValue', !Ref SnapshotId]
+      
+  AttackWindowsEBSVolume:
+    Type: 'AWS::EC2::Volume'
+    DeletionPolicy: Snapshot
+    Properties:
+      AutoEnableIO: true  # immediate, even if corrupted
+      AvailabilityZone: !Ref AvailabilityZone
+      Encrypted: true
+      KmsKeyId: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${EBSKeyAlias}'
+      Size: !Ref SizeInGB
+      Iops: !If [IsIo1, !Ref Iops, !Ref 'AWS::NoValue']
+      SnapshotId: !If [NoSnapshotId, !Ref 'AWS::NoValue', !Ref SnapshotId]
+
+  AttachmentAttackKali:
+    Type:  AWS::EC2::VolumeAttachment
+    Properties:
+      Device: /dev/xvdf
+      InstanceId: !Ref ACOBPenTestNProdAttackKali
+      VolumeId: !Ref AttackKaliEBSVolume
+      
+  AttachmentTestTarget:
+    Type:  AWS::EC2::VolumeAttachment
+    Properties:
+      Device: /dev/xvdg
+      InstanceId: !Ref ACOBPenTestNProdTestTargetKali
+      VolumeId: !Ref TestTargetEBSVolume
+      
+  AttachmentAttackWindows:
+    Type:  AWS::EC2::VolumeAttachment
+    Properties:
+      Device: /dev/xvdh
+      InstanceId: !Ref ACOBPenTestNProdAttackWindowsLatest2022
+      VolumeId: !Ref AttackWindowsEBSVolume
+      
+
+# S3 KMS Encryption Key Block
+  ACOBPenTestNProdS3BucketKey:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Version: 2012-10-17
+        Id: key-s3
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+                AWS: !Join
+                  - ''
+                  - - 'arn:aws:iam::'
+                    - !Ref 'AWS::AccountId'
+                    - ':root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow VPC Flow Logs to use the key as well
+            Effect: Allow
+            Principal:
+              Service:
+                  - delivery.logs.amazonaws.com
+            Action: 'kms:GenerateDataKey*'
+            Resource: '*'
+  s3KeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/acob-pentest-nprod-s3-bucket-key
+      TargetKeyId:
+        Ref: ACOBPenTestNProdS3BucketKey
+
+# Encrypted SSE S3 Bucket for Storage
+  PenTestNProdExtraStorageBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: pentest-nprod-extra-storage-bucket
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            KMSMasterKeyID: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${s3KeyAlias}'
+            SSEAlgorithm: 'aws:kms'
+
+  ACOBPenTestNProdTestBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: acob-pentest-nprod-test-bucket
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+        - ServerSideEncryptionByDefault:
+            KMSMasterKeyID: !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:${s3KeyAlias}'
+            SSEAlgorithm: 'aws:kms'
+
+
+Outputs:
+    EBSKeyAlias:
+        Description: 'EBS KMS Key Alias'
+        Value:
+            Ref: 'EBSKeyAlias'
+    s3KeyAlias:
+        Description: 'S3 KMS Key Alias'
+        Value:
+            Ref: 's3KeyAlias'
+    PenTestNProdExtraStorageBucket:
+        Description: 'Encrypted S3 Bucket'
+        Value:
+            Ref: 'PenTestNProdExtraStorageBucket'
+    ACOBPenTestNProdTestBucket:
+        Description: 'Encrypted S3 Bucket'
+        Value:
+            Ref: 'ACOBPenTestNProdTestBucket'
+
