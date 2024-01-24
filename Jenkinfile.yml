@@ -1,0 +1,61 @@
+pipeline {
+   agent any
+    stages {
+        stage('Code CheckOut') {
+            steps {
+                echo 'Downloading the Code from GitHub'
+            }
+        }
+        stage('Unit Testing') {
+            steps {
+                echo 'Performing Unit Tesing'
+            }
+        }        
+        stage('SonarQube Analysis') {
+            steps {
+                echo 'Static Code Analysis'
+                withSonarQubeEnv('SonarQube Server') {
+                    sh 'mvn org.sonarsource.scanner.maven:sonar-maven-plugin:3.7.0.1746:sonar -Dsonar.login=b8892c89ad56dbfede953d27fa9335b6dcdf8699'
+                }
+            }
+        }
+        stage('Nexus IQ Server') {
+            steps {
+                echo 'Vulnerability Scaning of SCM Code'
+            }
+        }
+        stage('Build, Compile & Test') {
+            steps {
+                echo 'Compiling the Code'
+                sh 'mvn clean install -Dmaven.test.skip=true'
+            }
+            post {
+                always {
+                    junit 'target/surefire-reports/*.xml'
+                }
+            }
+        }
+        stage('Docker Build') {
+            steps {
+                echo 'Image Creation of Code'
+                sh 'docker build -t mybuild:latest .'
+            }
+        }
+        stage('Docker Push') {
+            steps {
+                echo 'Pushing Image Docker Respository'
+                sh 'docker push mybuild:latest'
+            }
+        }
+        stage('Deploy') {
+            steps {
+                echo 'Downloading the Images and Deploy on Kubernetes EC2'
+            }
+        }
+        stage('Automated Testing') {
+            steps {
+                echo 'Jmeter Testing'
+            }
+        }
+    }
+}
