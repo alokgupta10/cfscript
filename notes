@@ -1,0 +1,11 @@
+What is ALB and NLB?
+Application LoadBalancer works on layer 7, the application layer of the OSI Model. It supports HTTP, HTTPS, and gRPC protocols and Round-robin Algorithms. An ALB is a good choice when you need flexible application-level traffic management and routing. It’s best with microservices, containerized environments, and web applications.
+
+Network LoadBalancer works on layer 4, the transport layer of the OSI Model. It supports TCP, UDP, and TLS protocols and Flow hash Algorithms. An NLB is best for high-performance, low-latency, and scalable network-level balancing. Applications that distribute traffic on the transport layer use NLBs, especially considering its reliability.
+
+What security mechanism would you propose for them.
+
+Security Groups plays an important role for the security mechanism which allows or deny the incoming traffic to the respective traget resources via loadbalancers. With Security Group we can specify the respective traffic to be allowed.
+
+Can they defend against the below attack
+Yes, It can be defended from massive DDoS attacks which is serving an HTTP-based workload to the Internet. So if they have used the Network LoadBalancer which use the IP address and DNS-based request. So we can restrict the traffic receving at the loadbalancer level.
