@@ -1,0 +1,19 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Deny",
+            "Principal": {
+                "AWS": [
+                    "arn:aws:iam::142677674202:user/charlie",
+                    "arn:aws:iam::142677674202:user/bob"
+                ]
+            },
+            "Action": "s3:*",
+            "Resource": [
+                "arn:aws:s3:::bucket-for-alice-01",
+                "arn:aws:s3:::bucket-for-alice-01/*"
+            ]
+        }
+    ]
+}
