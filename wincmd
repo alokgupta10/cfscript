@@ -1,0 +1,1 @@
+Get-ADUser -Filter {LastLogonDate -lt 30} -Properties LastLogonDate, SamAccountName, DisplayName | Select-Object SamAccountName, DisplayName, LastLogonDate
