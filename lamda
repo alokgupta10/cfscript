@@ -1,0 +1,9 @@
+def lambda_handler(event, context):
+    print(event)
+    for record in event['Records']:
+        # Extract the bucket name and object key from the event
+        bucket_name = record['s3']['bucket']['name']
+        object_key = record['s3']['object']['key']
+		
+        print('BucketName from EventLog :', bucket_name)
+        print('ObjectKey from EventLog :', object_key)
