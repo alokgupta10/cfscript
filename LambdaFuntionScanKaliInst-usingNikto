@@ -2,9 +2,11 @@ import boto3
 import subprocess
 
 def lambda_handler(event, context):
+    ### Replace the region_name with the actual region instance launched ###
     ec2_client = boto3.client('ec2', region_name='your-region')
+    s3_client = boto3.client('s3')
 
-    # Replace 'your-instance-id' with the actual EC2 instance ID
+    # Replace 'your-instance-id' with the actual EC2 instance ID launched
     instance_id = 'your-instance-id'
 
     try:
@@ -15,12 +17,13 @@ def lambda_handler(event, context):
         # Run Nikto scan on the EC2 instance
         nikto_output = subprocess.check_output(['nikto', '-h', public_ip])
 
-        # Process the Nikto output or send it to an alerting system
-        # You can customize this part based on your requirements.
+        # Upload the Nikto report to S3
+        # Replace 'your-bucket-name' with the actual S3 bucket name
+        s3_client.put_object(Bucket='your-bucket-name', Key='nikto_report.txt', Body=nikto_output)
 
         return {
             'statusCode': 200,
-            'body': 'Nikto scan completed successfully!'
+            'body': 'Nikto scan completed successfully! Report stored in S3.'
         }
     except Exception as e:
         return {
