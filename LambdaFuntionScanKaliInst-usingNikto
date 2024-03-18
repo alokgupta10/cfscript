@@ -1,0 +1,29 @@
+import boto3
+import subprocess
+
+def lambda_handler(event, context):
+    ec2_client = boto3.client('ec2', region_name='your-region')
+
+    # Replace 'your-instance-id' with the actual EC2 instance ID
+    instance_id = 'your-instance-id'
+
+    try:
+        # Get the public IP or DNS of the EC2 instance
+        response = ec2_client.describe_instances(InstanceIds=[instance_id])
+        public_ip = response['Reservations'][0]['Instances'][0]['PublicIpAddress']
+
+        # Run Nikto scan on the EC2 instance
+        nikto_output = subprocess.check_output(['nikto', '-h', public_ip])
+
+        # Process the Nikto output or send it to an alerting system
+        # You can customize this part based on your requirements.
+
+        return {
+            'statusCode': 200,
+            'body': 'Nikto scan completed successfully!'
+        }
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': f'Error scanning EC2 instance: {str(e)}'
+        }
