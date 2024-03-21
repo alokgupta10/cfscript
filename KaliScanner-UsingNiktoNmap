@@ -1,0 +1,39 @@
+import boto3
+import subprocess
+import csv
+
+def execute_command(command):
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout, stderr = process.communicate()
+    return stdout.decode(), stderr.decode()
+
+def lambda_handler(event, context):
+    # Set your EC2 instance ID
+    ec2_instance_id = 'YOUR_EC2_INSTANCE_ID'
+
+    # Set your S3 bucket name
+    s3_bucket_name = 'YOUR_S3_BUCKET_NAME'
+
+    # Execute Nikto and Nmap commands on the EC2 instance
+    nikto_output, nikto_error = execute_command(f'ssh -i your-key.pem kali@{ec2_instance_id} nikto -h localhost')
+    nmap_output, nmap_error = execute_command(f'ssh -i your-key.pem kali@{ec2_instance_id} nmap -sV localhost')
+
+    # Write Nikto output to CSV file
+    with open('/tmp/nikto_scan.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Nikto Output:', nikto_output])
+
+    # Write Nmap output to CSV file
+    with open('/tmp/nmap_scan.csv', 'w', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Nmap Output:', nmap_output])
+
+    # Upload CSV files to S3 bucket
+    s3_client = boto3.client('s3')
+    s3_client.upload_file('/tmp/nikto_scan.csv', s3_bucket_name, 'nikto_scan.csv')
+    s3_client.upload_file('/tmp/nmap_scan.csv', s3_bucket_name, 'nmap_scan.csv')
+
+    return {
+        'statusCode': 200,
+        'body': 'Nikto and Nmap scan results uploaded to S3 bucket.'
+    }
