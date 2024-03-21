@@ -1,32 +1,38 @@
-import subprocess
 import boto3
+import subprocess
+import os
+import csv
 
 def lambda_handler(event, context):
-    # Replace with your EC2 instance IP or hostname
-    ec2_instance_ip = "your_ec2_instance_ip"
+    # Initialize AWS S3 client
+    s3_client = boto3.client('s3')
 
-    # Run Nmap scan
-    nmap_output = subprocess.check_output(["nmap", "-p", "80", ec2_instance_ip])
+    # Specify your EC2 instance ID
+    ec2_instance_id = 'your-ec2-instance-id'
 
-    # Run Nikto scan
-    nikto_output = subprocess.check_output(["nikto", "-h", ec2_instance_ip])
+    # Define vulnerability scanning commands
+    nmap_command = f'nmap -T4 -A -v {ec2_instance_id}'
+    nikto_command = f'nikto -h http://{ec2_instance_id}'
 
-    # Create separate CSV files for Nmap and Nikto output
-    nmap_csv_output = f"Nmap Output:\n{nmap_output.decode()}"
-    nikto_csv_output = f"Nikto Output:\n{nikto_output.decode()}"
+    try:
+        # Execute nmap and nikto commands
+        nmap_output = subprocess.check_output(nmap_command, shell=True)
+        nikto_output = subprocess.check_output(nikto_command, shell=True)
 
-    # Upload Nmap CSV to S3
-    s3 = boto3.client("s3")
-    nmap_bucket_name = "your-nmap-s3-bucket"
-    nmap_object_key = "nmap_scan.csv"
-    s3.put_object(Bucket=nmap_bucket_name, Key=nmap_object_key, Body=nmap_csv_output)
+        # Store scan results in CSV format
+        csv_filename = 'vulnerability_scan_results.csv'
+        with open(csv_filename, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['Tool', 'Output'])
+            writer.writerow(['nmap', nmap_output.decode('utf-8')])
+            writer.writerow(['nikto', nikto_output.decode('utf-8')])
 
-    # Upload Nikto CSV to S3
-    nikto_bucket_name = "your-nikto-s3-bucket"
-    nikto_object_key = "nikto_scan.csv"
-    s3.put_object(Bucket=nikto_bucket_name, Key=nikto_object_key, Body=nikto_csv_output)
+        # Upload CSV file to S3 bucket
+		# Replace the S3 Bucket Name with your-s3-bucket-name
+        s3_bucket_name = 'your-s3-bucket-name'
+        s3_key = 'vulnerability_scans/' + csv_filename
+        s3_client.upload_file(csv_filename, s3_bucket_name, s3_key)
 
-    return {
-        "statusCode": 200,
-        "body": "Vulnerability scans completed and CSV files uploaded to S3."
-    }
+        return f'Scan results stored in S3 bucket: s3://{s3_bucket_name}/{s3_key}'
+    except Exception as e:
+        return f'Error executing vulnerability scans: {str(e)}'
