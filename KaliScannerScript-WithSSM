@@ -1,0 +1,72 @@
+import boto3
+
+def run_vulnerability_scan(instance_id):
+    # Initialize AWS clients
+    ssm_client = boto3.client('ssm')
+    s3_client = boto3.client('s3')
+    
+    # Parameters for Systems Manager Run Command
+    commands = [
+        'sudo nmap -oX /tmp/nmap_scan.xml <target_ip_or_range>',
+        'sudo nikto -host <target_ip_or_url> -o /tmp/nikto_scan.txt',
+        'sudo msscan <target_ip_or_url> -o /tmp/msscan_report.txt'
+    ]
+    
+    # Execute Systems Manager Run Command
+    response = ssm_client.send_command(
+        InstanceIds=[instance_id],
+        DocumentName='AWS-RunShellScript',
+        Parameters={'commands': commands},
+    )
+    
+    # Retrieve command ID
+    command_id = response['Command']['CommandId']
+    
+    # Wait for command execution to finish
+    waiter = ssm_client.get_waiter('command_executed')
+    waiter.wait(
+        CommandId=command_id,
+        WaiterConfig={'Delay': 15, 'MaxAttempts': 60}
+    )
+    
+    # Get command output
+    output = ssm_client.get_command_invocation(
+        CommandId=command_id,
+        InstanceId=instance_id,
+    )
+    
+    return output['StandardOutputContent']
+
+def lambda_handler(event, context):
+    # Extract instance ID from event
+    instance_id = event.get('instance_id')
+    if not instance_id:
+        return {
+            'statusCode': 400,
+            'body': 'Instance ID not provided in the event.'
+        }
+    
+    # Run vulnerability scan on the instance
+    scan_report = run_vulnerability_scan(instance_id)
+    
+    # Store scanning report to S3
+    s3_bucket_name = 'YOUR_S3_BUCKET_NAME'
+    s3_key = 'vulnerability_scan_report.csv'
+    s3_client = boto3.client('s3')
+    try:
+        s3_client.put_object(
+            Bucket=s3_bucket_name,
+            Key=s3_key,
+            Body=scan_report.encode('utf-8'),
+            ContentType='text/csv'
+        )
+    except Exception as e:
+        return {
+            'statusCode': 500,
+            'body': f'Error storing scan report to S3: {str(e)}'
+        }
+    
+    return {
+        'statusCode': 200,
+        'body': f'Scan report stored in S3 bucket: {s3_bucket_name}/{s3_key}'
+    }
