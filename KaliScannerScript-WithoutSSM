@@ -1,0 +1,48 @@
+import subprocess
+import boto3
+import csv
+
+def run_scan(event, context):
+    # Define your EC2 instance ID here
+    ec2_instance_id = 'your_ec2_instance_id'
+
+    # Define your S3 bucket name here
+    bucket_name = 'your_s3_bucket_name'
+
+    # Run NMAP scan
+    nmap_command = f'nmap -oX /tmp/nmap_scan.xml {ec2_instance_id}'
+    subprocess.run(nmap_command, shell=True, check=True)
+
+    # Run Nikto scan
+    nikto_command = f'nikto -host {ec2_instance_id} -output /tmp/nikto_scan.txt'
+    subprocess.run(nikto_command, shell=True, check=True)
+
+    # Run Msscan
+    msscan_command = f'msscan {ec2_instance_id} /tmp/msscan_report.txt'
+    subprocess.run(msscan_command, shell=True, check=True)
+
+    # Prepare scanning reports for S3
+    s3 = boto3.client('s3')
+    reports = {'nmap': '/tmp/nmap_scan.xml', 'nikto': '/tmp/nikto_scan.txt', 'msscan': '/tmp/msscan_report.txt'}
+
+    for tool, report_path in reports.items():
+        with open(report_path, 'r') as report_file:
+            report_content = report_file.read()
+
+        # Upload report to S3 bucket
+        s3_key = f'scan_reports/{ec2_instance_id}_{tool}.csv'
+        csv_file_path = f'/tmp/{ec2_instance_id}_{tool}.csv'
+
+        # Write report content to CSV file
+        with open(csv_file_path, 'w', newline='') as csv_file:
+            writer = csv.writer(csv_file)
+            writer.writerow(['Scan Report'])
+            writer.writerow([report_content])
+
+        # Upload CSV file to S3 bucket
+        s3.upload_file(csv_file_path, bucket_name, s3_key)
+
+    return {
+        'statusCode': 200,
+        'body': 'Scanning reports stored to S3 bucket successfully!'
+    }
