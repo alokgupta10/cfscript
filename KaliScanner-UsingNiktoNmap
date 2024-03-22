@@ -1,38 +1,47 @@
 import boto3
-import subprocess
-import os
-import csv
 
 def lambda_handler(event, context):
-    # Initialize AWS S3 client
+    # Initialize AWS clients
+    ssm_client = boto3.client('ssm')
     s3_client = boto3.client('s3')
-
-    # Specify your EC2 instance ID
-    ec2_instance_id = 'your-ec2-instance-id'
-
-    # Define vulnerability scanning commands
-    nmap_command = f'nmap -T4 -A -v {ec2_instance_id}'
-    nikto_command = f'nikto -h http://{ec2_instance_id}'
-
-    try:
-        # Execute nmap and nikto commands
-        nmap_output = subprocess.check_output(nmap_command, shell=True)
-        nikto_output = subprocess.check_output(nikto_command, shell=True)
-
-        # Store scan results in CSV format
-        csv_filename = 'vulnerability_scan_results.csv'
-        with open(csv_filename, 'w', newline='') as csvfile:
-            writer = csv.writer(csvfile)
-            writer.writerow(['Tool', 'Output'])
-            writer.writerow(['nmap', nmap_output.decode('utf-8')])
-            writer.writerow(['nikto', nikto_output.decode('utf-8')])
-
-        # Upload CSV file to S3 bucket
-		# Replace the S3 Bucket Name with your-s3-bucket-name
-        s3_bucket_name = 'your-s3-bucket-name'
-        s3_key = 'vulnerability_scans/' + csv_filename
-        s3_client.upload_file(csv_filename, s3_bucket_name, s3_key)
-
-        return f'Scan results stored in S3 bucket: s3://{s3_bucket_name}/{s3_key}'
-    except Exception as e:
-        return f'Error executing vulnerability scans: {str(e)}'
+    
+    # Parameters for Systems Manager Run Command
+    instance_id = 'YOUR_INSTANCE_ID'  # Replace with your EC2 instance ID
+    commands = ['sudo nmap -oX /tmp/nmap_scan.xml <target_ip_or_range>',
+                'sudo nikto -host <target_ip_or_url> -o /tmp/nikto_scan.txt']
+    
+    # Execute Systems Manager Run Command
+    response = ssm_client.send_command(
+        InstanceIds=[instance_id],
+        DocumentName='AWS-RunShellScript',
+        Parameters={'commands': commands},
+    )
+    
+    # Retrieve command ID
+    command_id = response['Command']['CommandId']
+    
+    # Wait for command execution to finish
+    waiter = ssm_client.get_waiter('command_executed')
+    waiter.wait(
+        CommandId=command_id,
+        WaiterConfig={'Delay': 15, 'MaxAttempts': 60}
+    )
+    
+    # Get command output
+    output = ssm_client.get_command_invocation(
+        CommandId=command_id,
+        InstanceId=instance_id,
+    )
+    
+    # Store scanning report to S3
+    s3_client.put_object(
+        Bucket='YOUR_S3_BUCKET_NAME',
+        Key='vulnerability_scan_report.csv',
+        Body=output['StandardOutputContent'].encode('utf-8'),
+        ContentType='text/csv'
+    )
+    
+    return {
+        'statusCode': 200,
+        'body': 'Vulnerability scan completed successfully and report stored in S3.'
+    }
