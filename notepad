@@ -1,0 +1,9 @@
+# You can check the Version, CommandType and Source of this cmdlet by giving below command. ## https://tossolution.com/2020/03/uninstall-addsdomaincontroller/
+Get-Command Uninstall-ADDSDomainController 
+
+
+https://learn.microsoft.com/en-us/powershell/module/activedirectory/get-adgroupmember?view=windowsserver2022-ps
+
+
+
+Get-ADGroupMember "group name" | Set-ADUser -PasswordNeverExpires $true -CannotChangePassword $true
