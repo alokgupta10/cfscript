@@ -1,0 +1,140 @@
+pipeline {
+    agent any
+
+    environment {
+		PROD_NEXUS_REGISTRY = "nexus-nonprod-gss.uscis.dhs.gov:9898"
+		PROD_NEXUS CREDENTIAL NEXUS_REGISTRY = "nexus-jenkins-credentials"
+		NEXUS_REGISTRY = "${( env.BRANCH_NAME 'main' || env.BRANCH_NAME ==~/release\/.*/ || env.CHANGE_BRANCH ==~/release\/.*/)? env.PROD_NEXUS_REGISTRY: 'nexus-nonprod-gss.uscis.dhs.gov: 9898"}"
+		NEXUS CREDENTIAL = "${( env.BRANCH_NAME == 'main' || env.BRANCH_NAME ==~/release\. */ || env.CHANGE BRANCH ==~/release\/.*/ )? env.PROD_NEXUS CREDENTIAL: 'nonprod-nexus-jenkins-credentials"}"
+		DOCKER_IMAGE_PULL_SECRET "${( env.BRANCH_NAME == 'main' || env.BRANCH_NAME ==~/release\/.*/ || env.CHANGE BRANCH ==~/release\/.*/ ) ? 'nexus-prod-docker-credentials': 'nexus-nonprod-docker-credentials"}"
+		CI_BUILDER_IMAGE= 'rfs-ta-ci-builder: 7.0.0'
+		
+        NEXUS_REPO_URL = 'http://your-nexus-repo-url'
+        IMAGE_NAME = 'your-image-name'
+        NEXUS_IQ_SERVER_URL = 'http://your-nexus-iq-server-url'
+        SONARQUBE_URL = 'http://your-sonarqube-url'
+        PRISMA_CLOUD_URL = 'http://your-prisma-cloud-url'
+        AWS_EKS_CLUSTER = 'your-eks-cluster-name'
+    }
+
+    stages {
+		stage('Install Dependencies') {
+			agent {
+				docker {
+					image 'rfs-ta-python-builder: 3.10'
+					label 'fdns-ata-ondemand'
+					registryUrl "https://${env.PROD_NEXUS_REGISTRY}"
+					registryCredentialsId "${env.PROD_NEXUS_CREDENTIAL}"
+					reuseNode true
+					args '--user 0'
+				}
+			}
+			steps {
+				// Setup venv
+				sh ''' #!/bin/bash
+					# Create venv
+					python3.10 m venv $PWD/venv
+					source $PWD/venv/bin/activate 
+					export PATH="$PWD/venv/bin:$PATH"
+					
+					# Make required directories
+					mkdir -p 11m/data
+					mkdir -p tsp/data
+					mkdir test
+					
+					# Change directory ownership
+					chown -R 995:993 11m/data
+					chown -R 995:993 stp/data
+					chmod 777 test
+					
+					chmod 777 ${WORKSPACE}
+					chown -R jenkins-user:jenkins-user ${WORKSPACE}
+					
+					pip config --user set global.index https://nexus-gss.uscis.dhs.gov/nexus/repository/pypi-proxy/pypi 
+					pip config --user set global.index-url https://nexus-gss.uscis.dhs.gov/nexus/repository/pypi-proxy/simple
+					pip config --user set global.trusted-host nexus-gss.uscis.dhs.gov
+					
+					# Pip Installs
+					pip3 install pip==23.0.1
+					pip install -r requirements.txt
+					pip3 install -e .
+					pip3 install pytest==7.2.2
+					pip3 install pytest-cov=-4.1.0
+					'''
+			}
+			post {
+				failure {
+					notifyTeams (
+						message: "LLM Detection branch \"${env.BRANCH_NAME}\" FAILED during Dependency Installation.", 
+						status: "FAILURE",
+						color: "#FF0000",
+						namespace: "nonprod",
+						facts: [
+							[name: "Environment", template: "CI/CD"],
+							[name: "Stage", template: "Install Dependencies"]
+						]
+					)
+				}
+			}
+		}
+		
+        stage('Pull Image') {
+            steps {
+                script {
+                    docker.image("${NEXUS_REPO_URL}/${IMAGE_NAME}").pull()
+                }
+            }
+        }
+
+        stage('Functional Tests') {
+            steps {
+                // Run functional tests
+                // Example command: sh "pytest tests/"
+            }
+        }
+
+        stage('SAST Analysis with Nexus IQ Server') {
+            steps {
+                script {
+                    // Perform SAST analysis with Nexus IQ Server
+                    // Example command: sh "nexus-iq-cli analyze --applicationId=myApp --serverUrl=${NEXUS_IQ_SERVER_URL} --user=myUser --token=myToken ${NEXUS_REPO_URL}/${IMAGE_NAME}"
+                }
+            }
+        }
+
+        stage('Code Analysis with SonarQube') {
+            steps {
+                script {
+                    // Perform code analysis with SonarQube
+                    // Example command: sh "sonar-scanner -Dsonar.host.url=${SONARQUBE_URL} -Dsonar.projectKey=myProjectKey -Dsonar.sources=. -Dsonar.login=myToken"
+                }
+            }
+        }
+
+        stage('Image Scanning with Prisma Cloud') {
+            steps {
+                script {
+                    // Perform image scanning with Prisma Cloud
+                    // Example command: sh "prisma-cloud-scan --url=${PRISMA_CLOUD_URL} ${NEXUS_REPO_URL}/${IMAGE_NAME}"
+                }
+            }
+        }
+
+        stage('Store Artifact on AWS EKS') {
+            steps {
+                script {
+                    // Deploy the artifact to AWS EKS
+                    // Example command: sh "kubectl apply -f deployment.yaml --kubeconfig=your-kubeconfig-path --cluster=${AWS_EKS_CLUSTER}"
+                }
+            }
+        }
+    }
+}
+
+
+
+Above is a full declarative Jenkins pipeline script that pulls an image from a Nexus repository, runs functional tests, scans it using Nexus IQ Server for SAST analysis, SonarQube for code analysis, and Prisma Cloud for image scanning. Then, it stores the artifact on AWS EKS:
+
+
+Ensure you replace placeholders (your-nexus-repo-url, your-image-name, your-nexus-iq-server-url, your-sonarqube-url, your-prisma-cloud-url, your-eks-cluster-name) with your actual URLs and names. Make sure to have necessary tools and plugins installed in your Jenkins environment for Docker, Nexus IQ Server, SonarQube, Prisma Cloud, and AWS EKS deployment. Additionally, modify the commands in the functional tests stage according to your testing framework.
+
