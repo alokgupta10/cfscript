@@ -1,0 +1,361 @@
+pipeline {
+    agent any
+
+    environment {
+		PROD_NEXUS_REGISTRY = "nexus-nonprod-gss.uscis.dhs.gov:9898"
+		PROD_NEXUS CREDENTIAL NEXUS_REGISTRY = "nexus-jenkins-credentials"
+		NEXUS_REGISTRY = "${( env.BRANCH_NAME 'main' || env.BRANCH_NAME ==~/release\/.*/ || env.CHANGE_BRANCH ==~/release\/.*/)? env.PROD_NEXUS_REGISTRY: 'nexus-nonprod-gss.uscis.dhs.gov: 9898"}"
+		NEXUS CREDENTIAL = "${( env.BRANCH_NAME == 'main' || env.BRANCH_NAME ==~/release\. */ || env.CHANGE BRANCH ==~/release\/.*/ )? env.PROD_NEXUS CREDENTIAL: 'nonprod-nexus-jenkins-credentials"}"
+		DOCKER_IMAGE_PULL_SECRET "${( env.BRANCH_NAME == 'main' || env.BRANCH_NAME ==~/release\/.*/ || env.CHANGE BRANCH ==~/release\/.*/ ) ? 'nexus-prod-docker-credentials': 'nexus-nonprod-docker-credentials"}"
+		CI_BUILDER_IMAGE= 'rfs-ta-ci-builder: 7.0.0'
+    }
+
+    stages {
+		stage('Install Dependencies') {
+			agent {
+				docker {
+					image 'rfs-ta-python-builder: 3.10'
+					label 'fdns-ata-ondemand'
+					registryUrl "https://${env.PROD_NEXUS_REGISTRY}"
+					registryCredentialsId "${env.PROD_NEXUS_CREDENTIAL}"
+					reuseNode true
+					args '--user 0'
+				}
+			}
+			steps {
+				// Setup venv
+				sh ''' #!/bin/bash
+					# Create venv
+					python3.10 m venv $PWD/venv
+					source $PWD/venv/bin/activate 
+					export PATH="$PWD/venv/bin:$PATH"
+					
+					# Make required directories
+					mkdir -p 11m/data
+					mkdir -p tsp/data
+					mkdir test
+					
+					# Change directory ownership
+					chown -R 995:993 11m/data
+					chown -R 995:993 stp/data
+					chmod 777 test
+					
+					chmod 777 ${WORKSPACE}
+					chown -R jenkins-user:jenkins-user ${WORKSPACE}
+					
+					pip config --user set global.index https://nexus-gss.uscis.dhs.gov/nexus/repository/pypi-proxy/pypi 
+					pip config --user set global.index-url https://nexus-gss.uscis.dhs.gov/nexus/repository/pypi-proxy/simple
+					pip config --user set global.trusted-host nexus-gss.uscis.dhs.gov
+					
+					# Pip Installs
+					pip3 install pip==23.0.1
+					pip install -r requirements.txt
+					pip3 install -e .
+					pip3 install pytest==7.2.2
+					pip3 install pytest-cov=-4.1.0
+					'''
+			}
+			post {
+				failure {
+					notifyTeams (
+						message: "LLM Detection branch \"${env.BRANCH_NAME}\" FAILED during Dependency Installation.", 
+						status: "FAILURE",
+						color: "#FF0000",
+						namespace: "nonprod",
+						facts: [
+							[name: "Environment", template: "CI/CD"],
+							[name: "Stage", template: "Install Dependencies"]
+						]
+					)
+				}
+			}
+		}
+		
+        stage('Pre-Compilation Testing') {
+			parallel {
+				stage ('Code Liniting') {
+					agent {
+						docker {
+							image 'rfs-ta-python-builder: 3.10"
+							label 'fdns-ata-ondemand'
+							registryUrl "https://${env.PROD_NEXUS_REGISTRY}" 
+							registryCredentialsId "${env.PROD_NEXUS CREDENTIAL}" 
+							reuseNode true
+						}
+					}
+					steps {
+						sh 'black --check 11m --diff'
+					}
+					post {
+						failure {
+							notifyTeams (
+								message: "LLM Detection branch "${env.BRANCH_NAME}\" FAILED during Code Linting.", 
+								status: "FAILURE",
+								color: "#FF0000",
+								namespace: "nonprod",
+								facts: [
+									[name: "Environment", template: "CI/CD"],
+									[name: "Stage", template: "Code Linting"]
+								]
+							)
+						}
+					}
+				}
+				stage ('Static Analysis') {
+					agent {
+						docker {
+							image 'rfs-ta-python-builder: 3.10'
+							label 'fdns-ata-ondemand'
+							registryUrl "https://${env.PROD_NEXUS_REGISTRY}"
+							registryCredentialsId "${env.PROD_NEXUS CREDENTIAL}"
+							reuseNode true
+						}
+					}
+					steps {
+						sh 'pycodestyle 11m'
+					}
+					post {
+						failure {
+							notifyTeams {
+								message: "LLM Detection branch "${env.BRANCH_NAME}\" FAILED during Static Analysis.",
+								status: "FAILURE",
+								color: "#FF0000",
+								namespace: "nonprod",
+								facts: [
+								[name: "Environment", template: "CI/CD"],
+								[name: "Stage", template: "Static Analysis"]
+								]
+							}
+						}
+					}
+				}
+			}
+		}
+
+		stage('Unit Tests') {
+			when { branch 'skip' } // =================Remove after testing=================
+			agent {
+				docker {
+					image 'rfs-ta-python-builder:3.10'
+					label 'fdns-ata-ondemand'
+					registryUrl "https://${env.PROD_NEXUS_REGISTRY}"
+					registryCredentialsId "${env.PROD_NEXUS_CREDENTIAL}"
+					reuseNode true
+					args '--user 995:993'
+				}
+			}
+			steps {
+				catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
+					// Activate virtual environment
+					sh '''#!/bin/bash
+						# Activate Virtual Environment
+						source $PWD/venv/bin/activate
+						which python3
+						export PATH="$PWD/venv/bin:$PATH"
+						# RUN TESTS
+						pytest tests --cov-report term --cov-report xml:test/coverage.xml --cov-report html:test/coverage.html --cov-config=.coveragere --cov=1lm/ tests/
+					   '''
+				}
+			}
+			post {
+				always {
+					publishHTML (
+						target : [
+							allowMissing: true,
+							alwaysLinkToLastBuild: true, 
+							keepAll: true,
+							reportDir: 'test',
+							reportFiles: 'coverage.html', 
+							reportName: 'PyTest Report',
+							reportTitles: 'PyTest Report'
+						]
+					)
+					stash (
+						includes: 'test/*',
+						name: 'test-artifacts'
+					)
+				}
+				failure {
+					notifyTeams {
+						message: "LLM Detection branch "${env.BRANCH_NAME}\" FAILED during Unit Testing.",
+						status: "FAILURE",
+						color: "#FF0000", {}
+						namespace: "nonprod",
+						facts: [
+						[name: "Environment", template: "CI/CD"],
+						[name: "Stage", template: "Unit Tests"]
+						]
+					}
+				}
+			}
+		}
+		
+		stage('Quality Gates") {
+			parallel {
+				stage ('SonarQube') {
+					when { branch 'skip' } // -------- Remove after Testing ------
+					agent {
+						docker {
+							image 'rfs-ta-sonar-scanner-cli:4.8'
+							label 'fdns-ata-ondemand'
+							registryUrl "https://${env.PROD_NEXUS_REGISTRY}"
+							registryCredentialsId "${env.PROD_NEXUS CREDENTIAL}"
+							reuseNode true
+							args '--user 0'
+						}
+					}
+					steps {
+						unstash 'test-artifacts'
+						withSonarQubeEnv (installationName: 'sonarqube-staging", credentialsId: 'staging-11m-detection-sonarqube-token') {
+							sh 'sonar-scanner'
+						}
+						waitForQualityGate abortPipeline: false, credentialsId: 'staging-11m-detection-sonarqube-token', webhookSecretId: ''
+					}
+					post {
+						failure {
+							notifyTeams {
+								message: "LLM Detection branch \"$(env. BRANCH NAME}\" FAILED to meet the SonarQube Quality Gating.",
+								status: "FAILURE",
+								Color: "#FF0000",
+								namespace: "staging",
+								Facts: [
+									[name: "Environment", template: "CI/CD"],
+									[name: "Stage", template: "SonarQube"],
+									[name: "URL", template: "https://sonarqube-staging.uscis.dhs.gov/dashboard?id-RFS-TA-LLM-Detection"]
+								]
+							}
+						}
+					}
+				}
+				stage ('NexusIQ') {
+					agent {
+						docker {
+							image 'rfs-ta-oraclejdk:17"
+							label 'fdns-ata-ondemand'
+							registryUrl "https://$(env.PROD NEXUS REGISTRY)" 
+							registryCredentialsId "$(env.PROD_NEXUS CREDENTIAL}" 
+							reuseNode true
+						}
+					}
+					// Don't run NexusIQ On a PR (As it almost always marks unstable)
+					when {
+						not {
+							changeRequest ()
+						}
+					}
+					steps {
+						nexusPolicyEvaluation (
+							advancedProperties: '',
+							enableDebugLogging: false,
+							failBuildOnNetworkError: true,
+							iqApplication: 'rfs-ta-llm-detection',
+							iqInstanceId: 'NexusIQServer', 
+							iqOrganization: '',
+							iqStage: 'build',
+							iqScanPatterns: [[ scanPattern: **/requirements.txt' ]]
+						)
+					}
+					post {
+						failure {
+							notifyTeams {
+								message: "LLM Detection branch "${env. BRANCH NAME}\" FAILED to meet the NexusIQ Quality Gating. ",
+								status: "FAILURE",
+								color: "#FF0000",
+								namespace: "nonprod",
+								facts: [
+									[name: "Environment", template: "CI/CD"],
+									[name: "Stage", template: "NexusIQ"]
+								]
+							}
+						}
+					}
+				}
+		
+		stage ('Docker Build, Scan, and Publish') {
+			steps {
+				sh "docker build -f Dockerfile -t rfs-ta-11m-detection: git-${GIT_COMMIT} --build-arg='REGISTRY=${env.PROD_NEXUS_REGISTRY]' --pull --no-cache-force-rm .
+				// Scan Image with Twistlock for security gating
+					prismaCloudScanImage image: "rfs-ta-11m-detection:git-${GIT_COMMIT}",
+					ca: '',
+					cert: '',
+					dockerAddress: 'unix:///var/run/docker.sock',
+					ignoreImageBuildTime: true,
+					key: '',
+					loglevel: 'info',
+					podmanPath: '',
+					project: '',
+					resultsFile: 'prisma-cloud-scan-results.json'
+				sh "docker tag rfs-ta-llm-detection:git-${GIT_COMMIT) $(NEXUS_REGISTRY)/rfs-ta-lln-detection:git-${GIT_COMMIT}" withDockerRegistry([ url: 'https://'+"$(env.NEXUS REGISTRY)", credentialsId: "$(env.NEXUS CREDENTIAL}"]) {
+					sh "docker push ${NEXUS_REGISTRY}/rfs-ta-lln-detection:git-${GIT_COMMIT}"
+			}
+		}
+		post {
+			always {
+				prismaCloudPublish results FilePattern: 'prisma-cloud-scan-results.json'
+				sh "docker rni rfs-ta-11m-detection:git-S(GIT_COMMIT} ${NEXUS_REGISTRY)/rfs-ta-11m-detection:git-S(GIT COMMIT}"
+			}
+			failure {
+				notifyTeams {
+					message: "LLM Detection branch \"$(env.BRANCH NAME}\" FAILED during Docker Build, Scan, and Push.",
+					status: "FAILURE",
+					color: "#FF0000",
+					namespace: "nonprod",
+					facts: [
+						[name: "Environment", template: "CI/CD"],
+						[name: "Stage", template: "Docker Build, Scan, and Publish"]
+					]
+				}
+			}
+		}
+	}
+	
+	
+			
+        stage('Pull Images from Repository') {			
+			
+            steps {
+                script {
+                    docker.image("${NEXUS_REPO_URL}/${IMAGE_NAME}").pull()
+                }
+            }
+        }
+
+        stage('Functional Tests') {
+            steps {
+                sh "pytest tests/"
+            }
+        }
+
+        stage('SAST Analysis with Nexus IQ Server') {
+            steps {
+                script {
+                    sh "nexus-iq-cli analyze --applicationId=myApp --serverUrl=${NEXUS_IQ_SERVER_URL} --user=myUser --token=myToken ${NEXUS_REPO_URL}/${IMAGE_NAME}"
+                }
+            }
+        }
+
+        stage('Code Analysis with SonarQube') {
+            steps {
+                script {
+                    sh "sonar-scanner -Dsonar.host.url=${SONARQUBE_URL} -Dsonar.projectKey=myProjectKey -Dsonar.sources=. -Dsonar.login=myToken"
+                }
+            }
+        }
+
+        stage('Image Scanning with Prisma Cloud') {
+            steps {
+                script {
+                    sh "prisma-cloud-scan --url=${PRISMA_CLOUD_URL} ${NEXUS_REPO_URL}/${IMAGE_NAME}"
+                }
+            }
+        }
+
+        stage('Store Artifact on AWS EKS') {
+            steps {
+                script {
+                    sh "kubectl apply -f deployment.yaml --kubeconfig=your-kubeconfig-path --cluster=${AWS_EKS_CLUSTER}"
+                }
+            }
+        }
+    }
+}
