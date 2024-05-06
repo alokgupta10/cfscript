@@ -1,0 +1,5 @@
+# Block incoming ICMP timestamp requests (Type 13)
+netsh advfirewall firewall add rule name="Block ICMP Timestamp Requests" protocol=icmpv4:13,any dir=in action=block
+
+# Block outgoing ICMP timestamp replies (Type 14)
+netsh advfirewall firewall add rule name="Block ICMP Timestamp Replies" protocol=icmpv4:14,any dir=out action=block
