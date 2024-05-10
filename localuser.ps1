@@ -10,10 +10,10 @@ $Users = Get-LocalUser
 # Loop through each user
 foreach ($User in $Users) {
     # Get the last logon time for the user
-    $LastLogon = $User.LastLogon
+    $LastLogon = (Get-LocalUser -Name $User).LastLogon
 
     # Calculate the number of days since last logon
-    $DaysSinceLastLogon = ($Today - $LastLogon).Days
+    $DaysSinceLastLogon = (New-TimeSpan -Start $LastLogon -End (Get-Date)).Days
 
     # Check if the user has been inactive for more than the specified number of days
     if ($DaysSinceLastLogon -ge $InactiveDays) {
