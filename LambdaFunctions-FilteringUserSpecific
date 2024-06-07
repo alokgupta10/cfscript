@@ -1,0 +1,27 @@
+import json
+
+def lambda_handler(event, context):
+    # Specify the user identity you want to filter on
+    allowed_user_identity = 'arn:aws:iam::123456789012:user/specific-user'
+
+    for record in event['Records']:
+        # Check if the event is an object creation event
+        if record['eventName'].startswith('ObjectCreated:'):
+            # Get the user identity from the event
+            user_identity = record['userIdentity']['principalId']
+            
+            # Filter based on the specified user identity
+            if user_identity == allowed_user_identity:
+                # Get the bucket name and object key from the event
+                bucket_name = record['s3']['bucket']['name']
+                object_key = record['s3']['object']['key']
+                
+                # Log or process the event as needed
+                print(f'File uploaded by specific user: s3://{bucket_name}/{object_key}')
+                
+                # Add your processing logic here
+                
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Success')
+    }
