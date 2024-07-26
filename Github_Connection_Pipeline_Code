@@ -1,0 +1,28 @@
+pipeline {
+    agent any
+    
+    environment {
+        GITHUB_TOKEN = credentials('github-token') // This references the credentials ID created in step 1
+        GITHUB_ORG = 'your-organization' // Replace with your GitHub organization
+        GITHUB_REPO = 'your-repository' // Replace with your GitHub repository
+    }
+    
+    stages {
+        stage('Check GitHub Connection') {
+            steps {
+                script {
+                    def response = sh(script: """
+                        curl -i -u username:${GITHUB_TOKEN} \\
+                        https://api.github.com/orgs/${GITHUB_ORG}/repos/${GITHUB_REPO}
+                    """, returnStdout: true).trim()
+                    
+                    if (response.contains('HTTP/1.1 200 OK')) {
+                        echo "GitHub connection successful!"
+                    } else {
+                        error "GitHub connection failed!"
+                    }
+                }
+            }
+        }
+    }
+}
