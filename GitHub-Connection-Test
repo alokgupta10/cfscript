@@ -1,0 +1,21 @@
+pipeline {
+    agent any
+    stages {
+        stage('Verify GitHub Connection') {
+            steps {
+                script {
+                    def gitHubUrl = 'https://github.com/your-organization/your-repo.git'
+                    
+                    try {
+                        // Check connection by cloning the repository
+                        sh "git ls-remote ${gitHubUrl}"
+                        echo 'GitHub connection verified successfully.'
+                    } catch (Exception e) {
+                        echo 'Failed to connect to GitHub.'
+                        currentBuild.result = 'FAILURE'
+                    }
+                }
+            }
+        }
+    }
+}
