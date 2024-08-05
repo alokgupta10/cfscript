@@ -1,0 +1,24 @@
+import json
+import boto3
+
+s3 = boto3.client('s3')
+
+def lambda_handler(event, context):
+    for record in event['Records']:
+        bucket_name = record['s3']['bucket']['name']
+        object_key = record['s3']['object']['key']
+        
+        # Download the log file
+        response = s3.get_object(Bucket=bucket_name, Key=object_key)
+        log_content = response['Body'].read().decode('utf-8')
+        
+        # Check if the log is from us-east-1
+        if '"awsRegion":"us-east-1"' not in log_content:
+            # Delete or move the object
+            s3.delete_object(Bucket=bucket_name, Key=object_key)
+            # Alternatively, you can move it to a different bucket or prefix
+
+    return {
+        'statusCode': 200,
+        'body': json.dumps('Logs filtered successfully')
+    }
