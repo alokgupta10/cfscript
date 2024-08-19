@@ -1,0 +1,143 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  S3BucketLifecycleConfiguration:
+    Type: 'AWS::S3::Bucket'
+    Properties: 
+      BucketName: 'acob-bucket-monitoring'
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteAPNortheast1Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: ap-northeast-1
+          - Id: DeleteAPNortheast2Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: ap-northeast-2
+          - Id: DeleteAPSouth1Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: ap-south-1
+          - Id: DeleteAPSoutheast1Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: ap-southeast-1
+          - Id: DeleteAPSoutheast2Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: ap-southeast-2
+          - Id: DeleteCACentral1Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: ca-central-1
+          - Id: DeleteEUCentral1Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: eu-central-1
+          - Id: DeleteEUNorth1Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: eu-north-1
+          - Id: DeleteEUWest1Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: eu-west-1
+          - Id: DeleteEUWest2Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: eu-west-2
+          - Id: DeleteEUWest3Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: eu-west-3
+          - Id: DeleteSAEast1Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: sa-east-1
+          - Id: DeleteUSEast2Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: us-east-2
+          - Id: DeleteUSWest1Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: us-west-1
+          - Id: DeleteUSWest2Logs
+            Status: Enabled
+            ExpirationInDays: 1
+            Filter:
+              And:
+                Prefix: 'AWSLogs/'
+                Tags:
+                  - Key: region
+                    Value: us-west-2
