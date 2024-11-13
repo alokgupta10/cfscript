@@ -1,0 +1,12 @@
+{
+     "Sid": "AllowDestinationAccountToUseKey",
+     "Effect": "Allow",
+     "Principal": { "AWS": "arn:aws:iam::<DESTINATION_ACCOUNT_ID>:root" },
+     "Action": [
+       "kms:Decrypt",
+       "kms:DescribeKey",
+       "kms:ReEncrypt*",
+       "kms:GenerateDataKey*"
+     ],
+     "Resource": "*"
+   }
