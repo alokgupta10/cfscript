@@ -1,0 +1,499 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Comprehensive CloudFormation template to create VPC, KMS, S3, IAM roles, EC2 instance, and EKS cluster with worker nodes.
+
+Parameters:
+  VPCName:
+    Type: String
+    Default: MyVPC
+    Description: Name of the VPC.
+    
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of private subnet IDs where the endpoints will be associated.
+    
+  ExistingS3EndpointId:
+    Type: String
+    Description: The ID of the existing S3 VPC Endpoint.
+
+  BaseImageId:
+    Type: AWS::EC2::Image::Id
+    Description: The AMI ID for the base image of the EC2 instance.
+    
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - m5.xlarge
+    Description: Instance type for the EC2 instance and EKS worker nodes.
+    
+  SecurityGroup1:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: The ID of the first security group.
+
+  SecurityGroup2:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: The ID of the second security group.
+
+  RoleName:
+    Type: String
+    Default: EKSNodeRole
+    Description: Name of the IAM Role to be created.
+
+  KMSAliasName:
+    Type: String
+    Default: MyKMSAlias
+    Description: Alias name for the KMS key.
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Key pair for accessing the EC2 instances and worker nodes.
+
+  AMIId:
+    Type: AWS::EC2::Image::Id
+    Description: AMI ID for the EC2 instance.
+
+  SubnetCIDR1:
+    Type: String
+    Default: 10.0.1.0/24
+    Description: CIDR block for the first private subnet.
+
+  SubnetCIDR2:
+    Type: String
+    Default: 10.0.2.0/24
+    Description: CIDR block for the second private subnet.
+
+  RoleName:
+    Type: String
+    Default: EKSNodeRole
+    Description: IAM Role name for the EKS cluster.
+    
+  BucketName:
+    Type: String
+    Description: Name of the S3 bucket for the AmazonS3ReadOnlyAccess policy.
+
+  Region:
+    Type: String
+    Description: AWS region for resources like SQS, EKS cluster, and CloudWatch logs.
+
+  AccountId:
+    Type: String
+    Description: AWS account ID where the resources are created.
+
+  ClusterName:
+    Type: String
+    Default: MyEKSCluster
+    Description: Name of the EKS cluster.
+    
+  NodeGroupName:
+    Type: String
+    Default: EKSWorkerGroup
+    Description: Name of the worker node group.
+    
+  DesiredCapacity:
+    Type: Number
+    Default: 3
+    Description: Desired number of worker nodes.
+
+  MinSize:
+    Type: Number
+    Default: 1
+    Description: Minimum number of worker nodes.
+
+  MaxSize:
+    Type: Number
+    Default: 5
+    Description: Maximum number of worker nodes.
+
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref VPCName
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCIDR1
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet1
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCIDR2
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: PrivateSubnet2
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: PrivateRouteTable
+
+  RouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref RouteTable
+
+  RouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref RouteTable
+      
+  DynamoDBEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties: 
+      VpcId: !Ref VPCId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.dynamodb"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref RouteTable
+
+  STSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPCId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sts"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref SubnetIds
+      SecurityGroupIds:
+        - !Ref SecurityGroup
+
+  SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for STS VPC Endpoint
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: STS-VPCEndpoint-SG
+
+  AttachExistingS3Endpoint:
+    Type: AWS::EC2::VPCEndpointServicePermissions
+    Properties:
+      AllowedPrincipals:
+        - !Sub "arn:aws:iam::${AWS::AccountId}:root"
+      ServiceId: !Ref ExistingS3EndpointId
+
+  # KMS Key
+  KMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for encrypting S3 bucket objects.
+      Enabled: true
+
+  KMSAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/${KMSAliasName}"
+      TargetKeyId: !Ref KMSKey
+
+  # S3 Bucket
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref KMSKey
+
+  # IAM Roles and Policies
+  IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: "sts:AssumeRole"
+
+  EKSNodeInstancePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: EKSNodeInstancePolicy
+      Roles:
+        - !Ref IAMRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AmazonEKSWorkerNodePolicy
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeRegions
+              - ec2:DescribeTags
+              - eks:DescribeCluster
+            Resource: "*"
+          - Sid: AmazonEC2ContainerRegistryReadOnly
+            Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+            Resource: "*"
+          - Sid: AmazonS3ReadOnlyAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:ListBucket
+            Resource:
+              - !Sub "arn:aws:s3:::${BucketName}"
+              - !Sub "arn:aws:s3:::${BucketName}/*"
+          - Sid: AccessToSQS
+            Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+            Resource: !Sub "arn:aws:sqs:${Region}:${AccountId}:cci-system-tasks"
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "*"
+
+  VaultWhitelistedPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: VaultWhitelistedPolicy
+      Roles:
+        - !Ref IAMRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EC2DescribePermissions
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeTags
+              - ec2:DescribeRegions
+              - iam:GetInstanceProfile
+            Resource: "*"
+          - Sid: STSAssumeRolePermission
+            Effect: Allow
+            Action: "sts:AssumeRole"
+            Resource: !Sub "arn:aws:iam::${AccountId}:role/vault-whitelisted-role"
+
+  EKSNodeInstanceAdditionalPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: EKSNodeInstanceAdditionalPolicy
+      Roles:
+        - !Ref IAMRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EKSNetworkInterfaceManagement
+            Effect: Allow
+            Action:
+              - ec2:AssignPrivateIpAddresses
+              - ec2:AttachNetworkInterface
+              - ec2:CreateNetworkInterface
+              - ec2:DeleteNetworkInterface
+              - ec2:DescribeInstances
+              - ec2:DescribeTags
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DetachNetworkInterface
+              - ec2:ModifyNetworkInterfaceAttribute
+              - ec2:UnassignPrivateIpAddresses
+            Resource: "*"
+          - Sid: EKSCreateTagsOnNetworkInterface
+            Effect: Allow
+            Action: "ec2:CreateTags"
+            Resource: "arn:aws:ec2:::network-interface/*"
+            Condition:
+              StringEquals:
+                ec2:CreateAction: CreateNetworkInterface
+          - Sid: DescribeEKSCluster
+            Effect: Allow
+            Action: "eks:DescribeCluster"
+            Resource: !Sub "arn:aws:eks:${Region}:${AccountId}:cluster/${ClusterName}"
+          - Sid: EC2DescribeActions
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeRegions
+              - ec2:DescribeTags
+            Resource: "*"
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub "arn:aws:logs:${Region}:${AccountId}:log-group:/aws/eks/*"
+          - Sid: ECRReadOnlyAccess
+            Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+            Resource: "*"
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref BaseImageId
+      SubnetId: !Ref PrivateSubnet1
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref SecurityGroup1
+        - !Ref SecurityGroup2
+      IamInstanceProfile: !Ref IAMRole
+      Tags:
+        - Key: Name
+          Value: acob-pentestprod-attack-kali1
+        - Key: ServerFunction
+          Value: Kali-attack-vm
+        - Key: System
+          Value: ISD/Other
+        - Key: System1
+          Value: Isd/ACOB
+        - Key: Environment
+          Value: NON_PROD
+        - Key: Environment1
+          Value: NonProd
+        - Key: FismaId
+          Value: CIS-00000-MIN-00000
+        - Key: FismaId1
+          Value: CIS-00000-GSS-00000
+        - Key: POC
+          Value: ACOBCloudAdmins@uscis.dhs.gov
+        - Key: Scheduler
+          Value: 1100;0100;utc;weekdays        
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EC2 instance.
+      VpcId: !Ref VPC
+      
+  NodeSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EKS worker nodes
+      VpcId: !Ref VPCId
+
+  # EKS Cluster
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      ResourcesVpcConfig:
+        SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+        SecurityGroupIds:
+          - !Ref InstanceSecurityGroup
+      RoleArn: !GetAtt IAMRole.Arn
+
+  EKSNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    Properties:
+      ClusterName: !Ref EKSCluster
+      NodegroupName: MyNodeGroup
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      NodeRole: !GetAtt IAMRole.Arn
+      ScalingConfig:
+        MinSize: 1
+        DesiredSize: 3
+        MaxSize: 5
+      InstanceTypes:
+        - !Ref InstanceType
+
+Outputs:
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+    
+  Subnet1Id:
+    Description: The ID of the first private subnet.
+    Value: !Ref PrivateSubnet1
+
+  Subnet2Id:
+    Description: The ID of the second private subnet.
+    Value: !Ref PrivateSubnet2
+    
+  RouteTableId:
+    Description: The ID of the route table associated with the private subnets.
+    Value: !Ref RouteTable
+
+  NACLs:
+    Description: List of Network ACLs in the created VPC.
+    Value: !Sub |
+      ${NACLList}
+    Export:
+      Name: NetworkACLList
+
+  NACLList:
+    Description: Network ACL rules for the VPC.
+    Value: !Join [", ", !Ref VPC]
+    
+  DynamoDBEndpointId:
+    Description: The ID of the DynamoDB VPC Endpoint.
+    Value: !Ref DynamoDBEndpoint
+
+  IAMRoleName:
+    Description: Name of the created IAM Role.
+    Value: !Ref IAMRole
+    
+  STSEndpointId:
+    Description: The ID of the STS VPC Endpoint.
+    Value: !Ref STSEndpoint
+
+  ExistingS3EndpointStatus:
+    Description: Confirmation that the existing S3 endpoint permissions were attached.
+    Value: !Ref AttachExistingS3Endpoint
+
+  S3BucketName:
+    Description: Name of the S3 bucket
+    Value: !Ref S3Bucket
+
+  KMSKeyId:
+    Description: KMS Key ID
+    Value: !Ref KMSKey
+
+  EKSClusterName:
+    Description: Name of the EKS cluster
+    Value: !Ref EKSCluster
