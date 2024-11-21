@@ -11,10 +11,6 @@ Parameters:
     Type: List<AWS::EC2::Subnet::Id>
     Description: List of private subnet IDs where the endpoints will be associated.
     
-  ExistingS3EndpointId:
-    Type: String
-    Description: The ID of the existing S3 VPC Endpoint.
-
   BaseImageId:
     Type: AWS::EC2::Image::Id
     Description: The AMI ID for the base image of the EC2 instance.
@@ -197,12 +193,29 @@ Resources:
         - Key: Name
           Value: STS-VPCEndpoint-SG
 
-  AttachExistingS3Endpoint:
-    Type: AWS::EC2::VPCEndpointServicePermissions
+  S3Endpoint:
+    Type: "AWS::EC2::VPCEndpoint"
     Properties:
-      AllowedPrincipals:
-        - !Sub "arn:aws:iam::${AWS::AccountId}:root"
-      ServiceId: !Ref ExistingS3EndpointId
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action:
+              - 's3:GetObject'
+              - 's3:PutObject'
+              - 's3:DeleteObject'
+            Resource:
+              - 'arn:aws:s3:::aws-allow-ec2-vpc-endpoint/*'
+      RouteTableIds:
+        - !Ref RouteTable
+      ServiceName: !Join
+        - ''
+        - - com.amazonaws.
+          - us-east-1
+          - .s3
+      VpcId: !Ref VPC
+      VpcEndpointType: Gateway
 
   # KMS Key
   KMSKey:
