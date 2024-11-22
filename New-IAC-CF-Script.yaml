@@ -250,7 +250,7 @@ Resources:
       PortRange:
         From: 443
         To: 443
-		
+
   NACLInboundEntry3:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
@@ -263,7 +263,7 @@ Resources:
       PortRange:
         From: 443
         To: 443
-		
+
   NACLInboundEntry4:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
@@ -276,7 +276,7 @@ Resources:
       PortRange:
         From: 443
         To: 443
-		
+
   NACLInboundEntry5:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
@@ -289,7 +289,7 @@ Resources:
       PortRange:
         From: 443
         To: 443
-		
+
   NACLInboundEntry6:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
@@ -302,7 +302,7 @@ Resources:
       PortRange:
         From: 443
         To: 443
-		
+
   NACLInboundEntry7:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
@@ -315,14 +315,14 @@ Resources:
       PortRange:
         From: 443
         To: 443
-		
+
   NACLInboundEntry8:
     Type: AWS::EC2::NetworkAclEntry
     Properties:
       NetworkAclId: !Ref MyNACL
       RuleNumber: *
       Protocol: all # TCP
-      RuleAction: allow
+      RuleAction: deny
       Egress: false
       CidrBlock: 0.0.0.0/0
       PortRange:
