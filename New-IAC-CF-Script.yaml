@@ -50,10 +50,6 @@ Parameters:
     Type: AWS::EC2::KeyPair::KeyName
     Description: Key pair for accessing the EC2 instances and worker nodes.
 
-  AMIId:
-    Type: AWS::EC2::Image::Id
-    Description: AMI ID for the EC2 instance.
-
   SubnetCIDR1:
     Type: String
     Default: 10.0.1.0/24
