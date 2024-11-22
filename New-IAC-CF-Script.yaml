@@ -26,6 +26,7 @@ Parameters:
       - t3.small
       - t3.medium
       - m5.xlarge
+      - m5.large
     Description: Instance type for the EC2 instance and EKS worker nodes.
     
   SecurityGroup1:
@@ -353,11 +354,43 @@ Resources:
 
 
   # KMS Key
-  KMSKey:
-    Type: AWS::KMS::Key
-    Properties:
-      Description: KMS key for encrypting S3 bucket objects.
-      Enabled: true
+KMSKey:
+  Type: AWS::KMS::Key
+  Properties:
+    Description: "KMS Key for encrypting S3 bucket objects with 90-day custom management"
+    EnableKeyRotation: true
+    KeyPolicy:
+      Version: "2012-10-17"
+      Statement:
+        - Sid: "Enable IAM User Permissions"
+          Effect: Allow
+          Principal:
+            AWS: !Sub "arn:aws:iam::${AccountId}:root"
+          Action: 
+            - "kms:Encrypt"
+            - "kms:Decrypt"
+            - "kms:ReEncrypt*"
+            - "kms:GenerateDataKey*"
+            - "kms:DescribeKey"
+            - "kms:Create*"
+            - "kms:Describe*"
+            - "kms:Enable*"
+            - "kms:List*"
+            - "kms:Put*"
+            - "kms:Update*"
+            - "kms:Revoke*"
+            - "kms:Disable*"
+            - "kms:Get*"
+            - "kms:Delete*"
+            - "kms:TagResource"
+            - "kms:UntagResource"
+            - "kms:ScheduleKeyDeletion"
+            - "kms:CancelKeyDeletion"
+            - "kms:DescribeKey"
+          Resource: "*"
+    Tags:
+      - Key: Name
+        Value: acob-s3-kms-key
 
   KMSAlias:
     Type: AWS::KMS::Alias
