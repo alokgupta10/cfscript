@@ -722,6 +722,7 @@ Resources:
 
   EKSNodeGroup:
     Type: AWS::EKS::Nodegroup
+    DependsOn: EKSCluster
     Properties:
       ClusterName: !Ref ClusterName
       NodegroupName: !Ref NodeGroupName
