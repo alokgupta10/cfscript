@@ -289,7 +289,7 @@ Resources:
               - 's3:PutObject'
               - 's3:DeleteObject'
             Resource:
-              - 'arn:aws:s3:::aws-allow-ec2-vpc-endpoint/*'
+              - '*'
       RouteTableIds:
         - !Ref RouteTable
       ServiceName: !Join
@@ -429,19 +429,6 @@ Resources:
       Egress: true
       CidrBlock: 0.0.0.0/0
 
-  # Security Groups
-  InstanceSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for EC2 instance.
-      VpcId: !Ref VPC
-
-  NodeSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for EKS worker nodes.
-      VpcId: !Ref VPC
-
   # S3 Bucket
   S3Bucket:
     Type: AWS::S3::Bucket
@@ -486,7 +473,6 @@ Resources:
             - "kms:UntagResource"
             - "kms:ScheduleKeyDeletion"
             - "kms:CancelKeyDeletion"
-            - "kms:DescribeKey"
             Resource: "*"
 
   KMSAlias:
@@ -641,7 +627,59 @@ Resources:
               - ecr:GetDownloadUrlForLayer
               - ecr:BatchGetImage
             Resource: "*"
-
+            
+  # Security Groups
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EC2 instance.
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.193.206.0/27
+          Description: Nexus-repo
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.193.182.0/24
+          Description: Nautilus access
+        - IpProtocol: -1 # All traffic
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.193.217.0/24
+          Description: Secdev-space
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.148.62.0/24
+          Description: Harness access
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.193.136.0/22
+          Description: Splunk access
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 149.101.148.22/32
+          Description: CSAM access
+      SecurityGroupEgress:
+        - IpProtocol: -1 # All traffic
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.103.0.0/16
+          Description: Preproxy access
+        - IpProtocol: -1 # All traffic
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.193.217.0/24
+          Description: Secdev-space
+      Tags:
+        - Key: Name
+          Value: CustomClusterSecurityGroup
+          
   EC2Instance:
     Type: AWS::EC2::Instance
     Properties:
@@ -680,7 +718,7 @@ Resources:
           - !Ref PrivateSubnet1
           - !Ref PrivateSubnet2
         SecurityGroupIds:
-          - !Ref InstanceSecurityGroup
+          - !Ref ClusterSecurityGroup
 
   EKSNodeGroup:
     Type: AWS::EKS::Nodegroup
