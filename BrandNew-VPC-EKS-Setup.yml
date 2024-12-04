@@ -1,0 +1,844 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Comprehensive CloudFormation template to create VPC, KMS CMK, S3 bucket, IAM roles for EKS Node Instance, EC2 instance for GitOps, and an EKS cluster with worker nodes.
+
+Parameters:
+  VPCName:
+    Type: String
+    Default: acob-secdev-prod-vpc
+    Description: Name of the VPC.
+
+  BaseImageId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-012967cc5a8c9f891
+    Description: The AMI ID for the EC2 instance.
+
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - m5.xlarge
+      - m5.large
+    Description: Instance type for EC2 and EKS worker nodes.
+
+  RoleName:
+    Type: String
+    Default: EKSNodeInstanceRole
+    Description: Name of the IAM Role.
+
+  KMSAliasName:
+    Type: String
+    Default: MyKMSAlias
+    Description: Alias name for the KMS key.
+
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Key pair for accessing EC2 instances and worker nodes.
+
+  SubnetCIDR1:
+    Type: String
+    Default: 10.0.3.0/24
+    Description: CIDR block for the first private subnet.
+
+  SubnetCIDR2:
+    Type: String
+    Default: 10.0.4.0/24
+    Description: CIDR block for the second private subnet.
+
+  BucketName:
+    Type: String
+    Default: splunk-forwarder-needs-processing-prod
+    Description: Name of the S3 bucket.
+
+  Region:
+    Type: String
+    Default: us-east-1
+    Description: AWS region for resources.
+
+  AccountId:
+    Type: String
+    Description: AWS account ID.
+
+  ClusterName:
+    Type: String
+    Default: CCI-app-EKS-Cluster
+    Description: Name of the EKS cluster.
+
+  NodeGroupName:
+    Type: String
+    Default: EKS-WorkerNode-Group
+    Description: Name of the worker node group.
+
+  DesiredCapacity:
+    Type: Number
+    Default: 3
+    Description: Desired number of worker nodes.
+
+  MinSize:
+    Type: Number
+    Default: 1
+    Description: Minimum number of worker nodes.
+
+  MaxSize:
+    Type: Number
+    Default: 4
+    Description: Maximum number of worker nodes.
+
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref VPCName
+       
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCIDR1
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: acob-secdev-prod-us-east-1a-subnet
+        - Key: "kubernetes.io/role/internal-elb"
+          Value: "1"
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref SubnetCIDR2
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: acob-secdev-prod-us-east-1b-subnet
+        - Key: "kubernetes.io/role/internal-elb"
+          Value: "1"
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: acob-secdev-prod-rt
+
+  PrivateRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref RouteTable
+
+  PrivateRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref RouteTable
+      
+  TransitGateway:
+    Type: AWS::EC2::TransitGateway
+    Properties:
+      Description: Transit Gateway
+      Options:
+        AmazonSideAsn: 64512
+        AutoAcceptSharedAttachments: enable
+        DefaultRouteTableAssociation: enable
+        DefaultRouteTablePropagation: enable
+        DnsSupport: enable
+        VpnEcmpSupport: enable
+
+  TransitGatewayAttachment1:
+    Type: AWS::EC2::TransitGatewayVpcAttachment
+    Properties:
+      TransitGatewayId: !Ref TransitGateway
+      VpcId: !Ref VPC
+      SubnetIds: !Ref PrivateSubnet1
+      Tags:
+        - Key: Name
+          Value: VPC1-TGW-Attachment
+
+  TransitGatewayAttachment2:
+    Type: AWS::EC2::TransitGatewayVpcAttachment
+    Properties:
+      TransitGatewayId: !Ref TransitGateway
+      VpcId: !Ref VPC
+      SubnetIds: !Ref PrivateSubnet2
+      Tags:
+        - Key: Name
+          Value: VPC2-TGW-Attachment
+
+  RouteTableUpdateVpc1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTable 
+      DestinationCidrBlock: 0.0.0.0/0
+      TransitGatewayId: !Ref TransitGateway
+
+  RouteTableUpdateVpc2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref RouteTable  
+      DestinationCidrBlock: 0.0.0.0/0
+      TransitGatewayId: !Ref TransitGateway
+      
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG to allow traffic to target EC2 Windows machine in private subnet
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443 
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Allow 443 TCP from the EKS clusters security group
+        - IpProtocol: tcp
+          FromPort: 1025 
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+          Description: Allow 1025 65535 from the EKS clusters security group.
+        - IpProtocol: tcp
+          FromPort: 8081
+          ToPort: 8081
+          CidrIp: 10.238.177.17/32
+          Description: McAfee ePO Agent wakeup to McAfee Agent
+        - IpProtocol: tcp
+          FromPort: 8081
+          ToPort: 8081
+          CidrIp: 10.48.0.0/12
+          Description: McAfee ePO Agent wakeup to McAfee Agent
+        - IpProtocol: tcp
+          FromPort: 8081
+          ToPort: 8081
+          CidrIp: 10.108.128.0/17
+          Description: McAfee ePO Agent wakeup to McAfee Agent
+        - IpProtocol: tcp
+          FromPort: 8081
+          ToPort: 8081
+          CidrIp: 10.109.128.0/17
+          Description: McAfee ePO Agent wakeup to McAfee Agent
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.238.177.17/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.61.199.9/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.58.111.29/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.61.37.101/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.61.101.7/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.61.69.25/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.61.166.94/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.57.20.149/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.57.205.232/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.56.57.91/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.193.208.60/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: udp
+          FromPort: 8082
+          ToPort: 8082
+          CidrIp: 10.56.161.25/32
+          Description: McAfee ePO Super Agent wakeup to McAfee Agents
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.103.141.128/25
+          Description: GSS Scan Resources - via CIDR
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.103.136.0/23
+          Description: GSS Jump Box Resources - via CIDR
+        - IpProtocol: icmp
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.0.0.0/8
+          Description: Allow ping from all USCIS
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.0.0.0/8
+          Description: Allow Outbound Connections to USCIS Network
+        - IpProtocol: -1
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all traffic 0.0.0.0/0 for internet access.
+      Tags:
+        - Key: Name
+          Value: MyCustomSecurityGroup
+
+  # VPC Endpoints
+  DynamoDBEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.dynamodb"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref RouteTable
+
+  # STSEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sts"
+      VpcEndpointType: Interface
+      SubnetIds:
+          - !Ref PrivateSubnet1
+          - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+
+  # S3Endpoint:
+    Type: "AWS::EC2::VPCEndpoint"
+    Properties:
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal: '*'
+            Action:
+              - 's3:GetObject'
+              - 's3:PutObject'
+              - 's3:DeleteObject'
+            Resource:
+              - '*'
+      RouteTableIds:
+        - !Ref RouteTable
+      ServiceName: !Join
+        - ''
+        - - com.amazonaws.
+          - us-east-1
+          - .s3
+      VpcId: !Ref VPC
+      VpcEndpointType: Gateway
+
+  MyNACL:
+    Type: AWS::EC2::NetworkAcl
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: MyNACL
+
+  NACLInboundEntry1:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref MyNACL
+      RuleNumber: 100
+      Protocol: 6 # TCP
+      RuleAction: allow
+      Egress: false
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 80
+        To: 80
+
+  NACLInboundEntry2:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref MyNACL
+      RuleNumber: 200
+      Protocol: 6 # TCP
+      RuleAction: allow
+      Egress: false
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 443
+        To: 443
+
+  NACLInboundEntry3:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref MyNACL
+      RuleNumber: 300
+      Protocol: 6 # TCP
+      RuleAction: allow
+      Egress: false
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 443
+        To: 443
+
+  NACLInboundEntry4:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref MyNACL
+      RuleNumber: 400
+      Protocol: 6 # TCP
+      RuleAction: allow
+      Egress: false
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 443
+        To: 443
+
+  NACLInboundEntry5:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref MyNACL
+      RuleNumber: 500
+      Protocol: 6 # TCP
+      RuleAction: allow
+      Egress: false
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 443
+        To: 443
+
+  NACLInboundEntry6:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref MyNACL
+      RuleNumber: 600
+      Protocol: 6 # TCP
+      RuleAction: allow
+      Egress: false
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 443
+        To: 443
+
+  NACLInboundEntry7:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref MyNACL
+      RuleNumber: 700
+      Protocol: 6 # TCP
+      RuleAction: allow
+      Egress: false
+      CidrBlock: 0.0.0.0/0
+      PortRange:
+        From: 443
+        To: 443
+
+  NACLInboundEntry8:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref MyNACL
+      RuleNumber: 101
+      Protocol: -1 # TCP
+      RuleAction: deny
+      Egress: false
+      CidrBlock: 0.0.0.0/0
+
+  NACLOutboundEntry1:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref MyNACL
+      RuleNumber: 100
+      Protocol: -1 # TCP
+      RuleAction: allow
+      Egress: true
+      CidrBlock: 0.0.0.0/0
+
+  NACLOutboundEntry2:
+    Type: AWS::EC2::NetworkAclEntry
+    Properties:
+      NetworkAclId: !Ref MyNACL
+      RuleNumber: 102
+      Protocol: -1 # TCP
+      RuleAction: deny
+      Egress: true
+      CidrBlock: 0.0.0.0/0
+
+  # S3 Bucket
+  S3Bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref BucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref KMSKey
+
+  # KMS Key
+  KMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS Key for encrypting S3 bucket objects.
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnableIAMUserPermissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AccountId}:root"
+            Action: 
+            - "kms:Encrypt"
+            - "kms:Decrypt"
+            - "kms:ReEncrypt*"
+            - "kms:GenerateDataKey*"
+            - "kms:DescribeKey"
+            - "kms:Create*"
+            - "kms:Describe*"
+            - "kms:Enable*"
+            - "kms:List*"
+            - "kms:Put*"
+            - "kms:Update*"
+            - "kms:Revoke*"
+            - "kms:Disable*"
+            - "kms:Get*"
+            - "kms:Delete*"
+            - "kms:TagResource"
+            - "kms:UntagResource"
+            - "kms:ScheduleKeyDeletion"
+            - "kms:CancelKeyDeletion"
+            Resource: "*"
+
+  KMSAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub "alias/${KMSAliasName}"
+      TargetKeyId: !Ref KMSKey
+
+  # IAM Roles and Policies
+  IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                 - ec2.amazonaws.com
+                 - eks.amazonaws.com
+            Action: "sts:AssumeRole"
+            
+  # IAM Role and Instance Profile
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref IAMRole
+
+  EKSNodeInstancePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: EKSNodeInstancePolicy
+      Roles:
+        - !Ref IAMRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AmazonEKSWorkerNodePolicy
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeRegions
+              - ec2:DescribeTags
+              - eks:DescribeCluster
+            Resource: "*"
+          - Sid: AmazonEC2ContainerRegistryReadOnly
+            Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+            Resource: "*"
+          - Sid: AmazonEKSCNIPolicy
+            Effect: Allow
+            Action:
+              - ec2:AssignPrivateIpAddresses
+              - ec2:AttachNetworkInterface
+              - ec2:CreateNetworkInterface
+              - ec2:DeleteNetworkInterface
+              - ec2:DescribeInstances
+              - ec2:DescribeTags
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DescribeInstanceTypes
+              - ec2:DescribeSubnets
+              - ec2:DetachNetworkInterface
+              - ec2:ModifyNetworkInterfaceAttribute
+              - ec2:UnassignPrivateIpAddresses
+            Resource: "*"
+          - Sid: AmazonEKSCNIPolicyENITag
+            Effect: Allow
+            Action:
+              - ec2:CreateTags
+            Resource: 
+              - arn:aws:ec2:*:*:network-interface/*          
+          - Sid: AmazonS3ReadOnlyAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:ListBucket
+            Resource:
+              - !Sub "arn:aws:s3:::${BucketName}"
+              - !Sub "arn:aws:s3:::${BucketName}/*"
+          - Sid: AccessToSQS
+            Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+            Resource: !Sub "arn:aws:sqs:${Region}:${AccountId}:cci-system-tasks"
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "*"
+
+  VaultWhitelistedPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: VaultWhitelistedPolicy
+      Roles:
+        - !Ref IAMRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EC2DescribePermissions
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeTags
+              - ec2:DescribeRegions
+              - iam:GetInstanceProfile
+            Resource: "*"
+          - Sid: STSAssumeRolePermission
+            Effect: Allow
+            Action: "sts:AssumeRole"
+            Resource: !Sub "arn:aws:iam::${AccountId}:role/vault-whitelisted-role"
+
+  EKSNodeInstanceAdditionalPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: EKSNodeInstanceAdditionalPolicy
+      Roles:
+        - !Ref IAMRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EKSNetworkInterfaceManagement
+            Effect: Allow
+            Action:
+              - ec2:AssignPrivateIpAddresses
+              - ec2:AttachNetworkInterface
+              - ec2:CreateNetworkInterface
+              - ec2:DeleteNetworkInterface
+              - ec2:DescribeInstances
+              - ec2:DescribeTags
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DetachNetworkInterface
+              - ec2:ModifyNetworkInterfaceAttribute
+              - ec2:UnassignPrivateIpAddresses
+            Resource: "*"
+          - Sid: EKSCreateTagsOnNetworkInterface
+            Effect: Allow
+            Action: "ec2:CreateTags"
+            Resource: "arn:aws:ec2:::network-interface/*"
+            Condition:
+              StringEquals:
+                ec2:CreateAction: CreateNetworkInterface
+          - Sid: DescribeEKSCluster
+            Effect: Allow
+            Action: "eks:DescribeCluster"
+            Resource: !Sub "arn:aws:eks:${Region}:${AccountId}:cluster/${ClusterName}"
+          - Sid: EC2DescribeActions
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeRegions
+              - ec2:DescribeTags
+            Resource: "*"
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub "arn:aws:logs:${Region}:${AccountId}:log-group:/aws/eks/*"
+          - Sid: ECRReadOnlyAccess
+            Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+            Resource: "*"
+            
+  # Security Groups
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EC2 instance.
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.193.206.0/27
+          Description: Nexus-repo
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.193.182.0/24
+          Description: Nautilus access
+        - IpProtocol: -1 # All traffic
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.193.217.0/24
+          Description: Secdev-space
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.148.62.0/24
+          Description: Harness access
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.193.136.0/22
+          Description: Splunk access
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 149.101.148.22/32
+          Description: CSAM access
+      SecurityGroupEgress:
+        - IpProtocol: -1 # All traffic
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.103.0.0/16
+          Description: Preproxy access
+        - IpProtocol: -1 # All traffic
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.193.217.0/24
+          Description: Secdev-space
+      Tags:
+        - Key: Name
+          Value: CustomClusterSecurityGroup
+          
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Ref BaseImageId
+      SubnetId: !Ref PublicSubnet1
+      KeyName: !Ref KeyName
+      SecurityGroupIds:
+        - !Ref EC2SecurityGroup
+      IamInstanceProfile: !Ref InstanceProfile
+      Tags:
+        - Key: Name
+          Value: acob-cci-harness-GitOps-EC2
+        - Key: "ECS:ServerFunction"
+          Value: Harness-GitOps
+        - Key: "ECS:System"
+          Value: Isd/ACOB
+        - Key: "ECS:Environment"
+          Value: Prod
+        - Key: "ECS:FismaId"
+          Value: CIS-07148-GSS-07148
+        - Key: "ECS:POC"
+          Value: ACOBCloudAdmins@uscis.dhs.gov
+        - Key: "ECS:Scheduler:ec2-startstop"
+          Value: 1100;0100;utc;weekdays
+    
+
+  # EKS Cluster and Node Group
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      RoleArn: !GetAtt IAMRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds:
+        - !Ref PrivateSubnet2
+        - !Ref PrivateSubnet1
+        SecurityGroupIds:
+          - !Ref ClusterSecurityGroup
+
+  EKSNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn: EKSCluster
+    Properties:
+      ClusterName: !Ref ClusterName
+      NodegroupName: !Ref NodeGroupName
+      Subnets:
+        - !Ref PrivateSubnet2
+        - !Ref PrivateSubnet1
+      NodeRole: !GetAtt IAMRole.Arn
+      ScalingConfig:
+        MinSize: !Ref MinSize
+        DesiredSize: !Ref DesiredCapacity
+        MaxSize: !Ref MaxSize
+      InstanceTypes:
+        - !Ref InstanceType
+
+Outputs:
+  VPCId:
+    Description: VPC ID
+    Value: !Ref VPC
+
+  S3BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref S3Bucket
+
+  KMSKeyId:
+    Description: KMS Key ID
+    Value: !Ref KMSKey
+
+  EKSClusterName:
+    Description: EKS Cluster Name
+    Value: !Ref EKSCluster

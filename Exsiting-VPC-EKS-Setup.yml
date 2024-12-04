@@ -1,0 +1,304 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: EKS Cluster with Worker Nodes using existing VPC, Subnets, and Security Groups
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: MyEKSCluster
+    Description: Name of the EKS Cluster
+  NodeGroupName:
+    Type: String
+    Default: MyNodeGroup
+    Description: Name of the Node Group
+  VPC:
+    Type: AWS::EC2::VPC::Id
+    Description: The ID of the existing VPC
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: List of Subnet IDs for the EKS Cluster and Nodes
+  SecurityGroupIds:
+    Type: List<AWS::EC2::SecurityGroup::Id>
+    Description: "List of 2 Security Group IDs for EKS"
+  InstanceType:
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - m5.xlarge
+      - m5.large
+    Description: Instance type for EC2 and EKS worker nodes.
+  DesiredCapacity:
+    Type: Number
+    Default: 3
+    Description: Desired number of worker nodes
+  MinSize:
+    Type: Number
+    Default: 3
+    Description: Minimum number of worker nodes
+  MaxSize:
+    Type: Number
+    Default: 3
+    Description: Maximum number of worker nodes
+
+Resources:
+  # IAM Roles and Policies
+  IAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: 
+                 - ec2.amazonaws.com
+                 - eks.amazonaws.com
+            Action: "sts:AssumeRole"
+            
+  # IAM Role and Instance Profile
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref IAMRole
+
+  EKSNodeInstancePolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: EKSNodeInstancePolicy
+      Roles:
+        - !Ref IAMRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AmazonEKSWorkerNodePolicy
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeRegions
+              - ec2:DescribeTags
+              - eks:DescribeCluster
+            Resource: "*"
+          - Sid: AmazonEC2ContainerRegistryReadOnly
+            Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+            Resource: "*"
+          - Sid: AmazonEKSCNIPolicy
+            Effect: Allow
+            Action:
+              - ec2:AssignPrivateIpAddresses
+              - ec2:AttachNetworkInterface
+              - ec2:CreateNetworkInterface
+              - ec2:DeleteNetworkInterface
+              - ec2:DescribeInstances
+              - ec2:DescribeTags
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DescribeInstanceTypes
+              - ec2:DescribeSubnets
+              - ec2:DetachNetworkInterface
+              - ec2:ModifyNetworkInterfaceAttribute
+              - ec2:UnassignPrivateIpAddresses
+            Resource: "*"
+          - Sid: AmazonEKSCNIPolicyENITag
+            Effect: Allow
+            Action:
+              - ec2:CreateTags
+            Resource: 
+              - arn:aws:ec2:*:*:network-interface/*          
+          - Sid: AmazonS3ReadOnlyAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:ListBucket
+            Resource:
+              - !Sub "arn:aws:s3:::${BucketName}"
+              - !Sub "arn:aws:s3:::${BucketName}/*"
+          - Sid: AccessToSQS
+            Effect: Allow
+            Action:
+              - sqs:ReceiveMessage
+              - sqs:DeleteMessage
+              - sqs:GetQueueAttributes
+            Resource: !Sub "arn:aws:sqs:${Region}:${AccountId}:cci-system-tasks"
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: "*"
+
+  VaultWhitelistedPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: VaultWhitelistedPolicy
+      Roles:
+        - !Ref IAMRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EC2DescribePermissions
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeTags
+              - ec2:DescribeRegions
+              - iam:GetInstanceProfile
+            Resource: "*"
+          - Sid: STSAssumeRolePermission
+            Effect: Allow
+            Action: "sts:AssumeRole"
+            Resource: !Sub "arn:aws:iam::${AccountId}:role/vault-whitelisted-role"
+
+  EKSNodeInstanceAdditionalPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: EKSNodeInstanceAdditionalPolicy
+      Roles:
+        - !Ref IAMRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EKSNetworkInterfaceManagement
+            Effect: Allow
+            Action:
+              - ec2:AssignPrivateIpAddresses
+              - ec2:AttachNetworkInterface
+              - ec2:CreateNetworkInterface
+              - ec2:DeleteNetworkInterface
+              - ec2:DescribeInstances
+              - ec2:DescribeTags
+              - ec2:DescribeNetworkInterfaces
+              - ec2:DetachNetworkInterface
+              - ec2:ModifyNetworkInterfaceAttribute
+              - ec2:UnassignPrivateIpAddresses
+            Resource: "*"
+          - Sid: EKSCreateTagsOnNetworkInterface
+            Effect: Allow
+            Action: "ec2:CreateTags"
+            Resource: "arn:aws:ec2:::network-interface/*"
+            Condition:
+              StringEquals:
+                ec2:CreateAction: CreateNetworkInterface
+          - Sid: DescribeEKSCluster
+            Effect: Allow
+            Action: "eks:DescribeCluster"
+            Resource: !Sub "arn:aws:eks:${Region}:${AccountId}:cluster/${ClusterName}"
+          - Sid: EC2DescribeActions
+            Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeRegions
+              - ec2:DescribeTags
+            Resource: "*"
+          - Sid: CloudWatchLogs
+            Effect: Allow
+            Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Resource: !Sub "arn:aws:logs:${Region}:${AccountId}:log-group:/aws/eks/*"
+          - Sid: ECRReadOnlyAccess
+            Effect: Allow
+            Action:
+              - ecr:GetAuthorizationToken
+              - ecr:BatchCheckLayerAvailability
+              - ecr:GetDownloadUrlForLayer
+              - ecr:BatchGetImage
+            Resource: "*"
+            
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EC2 instance.
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.193.206.0/27
+          Description: Nexus-repo
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.193.182.0/24
+          Description: Nautilus access
+        - IpProtocol: -1 # All traffic
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.193.217.0/24
+          Description: Secdev-space
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.148.62.0/24
+          Description: Harness access
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 10.193.136.0/22
+          Description: Splunk access
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 149.101.148.22/32
+          Description: CSAM access
+      SecurityGroupEgress:
+        - IpProtocol: -1 # All traffic
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.103.0.0/16
+          Description: Preproxy access
+        - IpProtocol: -1 # All traffic
+          FromPort: -1
+          ToPort: -1
+          CidrIp: 10.193.217.0/24
+          Description: Secdev-space
+      Tags:
+        - Key: Name
+          Value: CustomClusterSecurityGroup
+          
+  EKSCluster:
+    Type: AWS::EKS::Cluster
+    Properties:
+      Name: !Ref ClusterName
+      RoleArn: !GetAtt IAMRole.Arn
+      ResourcesVpcConfig:
+        SubnetIds: !Ref SubnetIds
+        SecurityGroupIds:
+          - !Ref ClusterSecurityGroup
+
+  EKSNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn: EKSCluster
+    Properties:
+      ClusterName: !Ref ClusterName
+      NodegroupName: !Ref NodeGroupName
+      Subnets: !Ref SubnetIds
+      NodeRole: !GetAtt IAMRole.Arn
+      ScalingConfig:
+        MinSize: !Ref MinSize
+        DesiredSize: !Ref DesiredCapacity
+        MaxSize: !Ref MaxSize
+      InstanceTypes:
+        - !Ref InstanceType
+      AmiType: AL2_x86_64
+      DiskSize: 20
+
+Outputs:
+  ClusterName:
+    Description: Name of the EKS Cluster
+    Value: !Ref ClusterName
+  NodeGroupName:
+    Description: Name of the Node Group
+    Value: !Ref NodeGroupName
