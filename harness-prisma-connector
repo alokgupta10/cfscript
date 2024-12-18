@@ -1,0 +1,19 @@
+type: "CONNECTOR"
+connectorType: "PrismaCloud"
+name: "PrismaCloudConnector"
+identifier: "prisma_cloud_connector"
+description: "Connector for Prisma Cloud integration using Basic Authentication"
+tags: 
+  - "security"
+  - "prisma"
+spec:
+  type: "PrismaCloud"
+  url: "https://<your-prisma-cloud-console-url>" # Replace with your Prisma Cloud Console URL
+  credentials:
+    type: "Basic"
+    spec:
+      username: "<your-username>"       # Replace with your Prisma Cloud username
+      passwordRef: "<harness-secret-id>" # Replace with the secret identifier stored in Harness Secrets Manager
+  featuresEnabled: # Optional: Enable features as needed
+    - "VulnerabilityManagement"
+    - "ComplianceMonitoring"
