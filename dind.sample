@@ -1,0 +1,74 @@
+Based on the DIND console log error and your DIND YAML script, the issue appears to be related to Docker-in-Docker (DinD) failing due to incorrect TLS setup or trying to connect using HTTP instead of HTTPS.
+
+Issue Analysis
+	1.	The error “client sent an HTTP request to an HTTPS server” means that the Docker daemon is expecting secure TLS connections, but the request is being sent as plain HTTP.
+	2.	Your DinD container may have started with TLS enabled, but your Harness pipeline is trying to connect without using TLS.
+	3.	The DOCKER_HOST environment variable may not be correctly set or aligned with the TLS configuration.
+
+Steps to Fix
+
+1. Modify the DIND Step to Disable TLS (Recommended Fix)
+
+If TLS is not strictly required for your setup, modify your DinD step to explicitly disable TLS by adding --tls=false to the entrypoint:
+
+- step:
+    name: Start Docker-in-Docker
+    identifier: start_dind
+    type: Service
+    spec:
+      container:
+        image: docker:dind
+        privileged: true
+        entrypoint: [ "dockerd", "--host=unix:///var/run/docker.sock", "--tls=false" ]
+      env:
+        DOCKER_HOST: "unix:///var/run/docker.sock"
+      resources:
+        limits:
+          memory: 2G
+
+✅ This ensures DinD does not enforce TLS, preventing HTTPS/HTTP mismatch errors.
+
+2. If TLS is Required, Configure Docker Properly
+
+If your setup requires TLS, ensure that the correct certificates are being used by mounting them inside the container:
+
+- step:
+    name: Start Docker-in-Docker
+    identifier: start_dind
+    type: Service
+    spec:
+      container:
+        image: docker:dind
+        privileged: true
+        entrypoint: [ "dockerd", "--host=unix:///var/run/docker.sock", "--tlsverify", "--tlscert=/certs/server-cert.pem", "--tlskey=/certs/server-key.pem", "--tlscacert=/certs/ca.pem" ]
+      volumes:
+        - name: docker-certs
+          path: /certs
+      env:
+        DOCKER_HOST: "tcp://localhost:2376"
+      resources:
+        limits:
+          memory: 2G
+
+	•	Ensure your TLS certificates are correctly mounted inside /certs.
+	•	Set DOCKER_HOST to tcp://localhost:2376, which is the secure port for TLS connections.
+
+3. Restart the Harness Runner
+
+After making changes, restart your self-hosted Harness runner to apply them:
+
+sudo systemctl restart harness-runner
+
+For Kubernetes-based Harness runners, restart the runner pod:
+
+kubectl delete pod <harness-runner-pod> -n <namespace>
+
+4. Re-run the Pipeline
+	•	Run the pipeline again and monitor logs to confirm Docker starts without TLS errors.
+	•	If the issue persists, check the exact entrypoint and environment variables being used in the pipeline logs.
+
+Expected Outcome
+	•	If TLS is disabled (--tls=false), DinD will accept HTTP requests, fixing the error.
+	•	If TLS is required, Docker will connect securely using proper certificates.
+
+This should resolve the issue and allow your NexusIQ scan to run properly. Let me know if you need further refinements! 🚀
