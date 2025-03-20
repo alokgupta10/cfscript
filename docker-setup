@@ -134,3 +134,105 @@ docker --version
 sudo apt-get update
 sudo apt-get install -y dbus-user-session containerd.io iptables
 sudo apt-get install -y docker-ce docker-ce-cli docker-ce-rootless-extras
+
+=====================================================================================================================================================================
+
+
+
+To *install Docker 27.2.0 from the pulled image* as a *native package*, follow these steps:
+
+---
+
+## *Step 1: Extract the Docker Installation Files from the Image*
+Since you have already pulled the image from Nexus, we need to extract the required binaries and install them.
+
+### *1. Create a Temporary Container from the Image*
+Run the following to create a stopped container:
+bash
+docker create --name docker-extract nexus-nonprod-gss.uskis.dgf.gov:8262/docker:27.2.0
+
+
+### *2. Copy Docker Binaries and Dependencies to the Host*
+Extract Docker's main binaries:
+bash
+docker cp docker-extract:/usr/bin/docker /usr/bin/
+docker cp docker-extract:/usr/bin/dockerd /usr/bin/
+docker cp docker-extract:/usr/bin/containerd /usr/bin/
+docker cp docker-extract:/usr/bin/containerd-shim /usr/bin/
+docker cp docker-extract:/usr/bin/runc /usr/bin/
+docker cp docker-extract:/usr/bin/docker-init /usr/bin/
+docker cp docker-extract:/usr/bin/docker-proxy /usr/bin/
+
+
+Extract Docker libraries and configuration:
+bash
+docker cp docker-extract:/lib/systemd/system/docker.service /etc/systemd/system/
+docker cp docker-extract:/lib/systemd/system/docker.socket /etc/systemd/system/
+docker cp docker-extract:/etc/docker /etc/docker
+docker cp docker-extract:/var/lib/docker /var/lib/docker
+
+
+---
+
+## *Step 2: Set Correct Permissions*
+bash
+chmod +x /usr/bin/docker /usr/bin/dockerd /usr/bin/containerd /usr/bin/containerd-shim /usr/bin/runc /usr/bin/docker-init /usr/bin/docker-proxy
+sudo chmod 644 /etc/systemd/system/docker.service /etc/systemd/system/docker.socket
+
+
+---
+
+## *Step 3: Reload Systemd and Start Docker*
+Enable Docker as a system service:
+bash
+sudo systemctl daemon-reload
+sudo systemctl enable docker
+sudo systemctl restart docker
+
+
+Verify that Docker is running:
+bash
+sudo systemctl status docker
+
+
+---
+
+## *Step 4: Confirm Installation*
+Check Docker version:
+bash
+docker --version
+
+Expected output:
+
+Docker version 27.2.0, build <commit-hash>
+
+
+---
+
+## *Step 5: Clean Up Temporary Container*
+Now that Docker is installed, you can remove the temporary container:
+bash
+docker rm -f docker-extract
+
+
+---
+
+## *Troubleshooting*
+If Docker is not running:
+- Check logs:
+  bash
+  journalctl -u docker --no-pager --lines=100
+  
+- Restart the service:
+  bash
+  sudo systemctl restart docker
+  
+- If docker.sock is missing:
+  bash
+  sudo ln -s /run/docker.sock /var/run/docker.sock
+  
+
+---
+
+This method *extracts Docker from the image* and *installs it as a native package*. Let me know if you hit any issues! 🚀
+
