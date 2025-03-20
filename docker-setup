@@ -122,7 +122,10 @@ Let me know which method works best for your pipeline! 🚀
 
 wget https://download.docker.com/linux/debian/dists/bullseye/pool/stable/amd64/docker-ce-rootless-extras_27.2.0-1~debian.11~bullseye_amd64.deb 
 wget https://download.docker.com/linux/debian/dists/bullseye/pool/stable/amd64/docker-ce-cli_27.2.0-1~debian.11~bullseye_amd64.deb 
-wget https://download.docker.com/linux/debian/dists/bullseye/pool/stable/amd64/docker-ce_27.2.0-1~debian.11~bullseye_amd64.deb 
+wget https://download.docker.com/linux/debian/dists/bullseye/pool/stable/amd64/docker-ce_27.2.0-1~debian.11~bullseye_amd64.deb
+wget https://download.docker.com/linux/debian/dists/bullseye/pool/stable/amd64/docker-compose-plugin_2.10.2~debian-bullseye_amd64.deb
+wget https://download.docker.com/linux/debian/dists/bullseye/pool/stable/amd64/docker-buildx-plugin_0.22.0-1~debian.11~bullseye_amd64.deb
+wget https://download.docker.com/linux/debian/dists/bullseye/pool/stable/amd64/containerd.io_1.7.25-1_amd64.deb
 dpkg -i *.deb
 apt-get install -f
 docker --version
