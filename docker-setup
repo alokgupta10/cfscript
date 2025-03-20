@@ -32,3 +32,88 @@ docker rmi -f $(docker images | grep 'docker:dind' | awk '{print $3}')
 sudo apt remove -y docker.io docker-ce docker-ce-cli containerd.io
 sudo apt autoremove -y
 sudo apt purge -y docker.io docker-ce
+
+
+=========================================================================================================================
+
+
+Since you've *pulled Docker 27.2.0* as an image from your *Nexus repo, you need to set it up correctly in your **Harness CI pipeline*. Here’s how:
+
+---
+
+## *Option 1: Running Docker as a Service in Harness CI*
+If your pipeline runs *inside a container*, you should start docker:dind before using Docker inside the pipeline.
+
+bash
+docker run --privileged -d --name docker-27.2.0 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  nexus-nonprod-gss.uskis.dgf.gov:8262/docker:27.2.0
+
+
+- --privileged: Grants necessary permissions for Docker-in-Docker.
+- -v /var/run/docker.sock:/var/run/docker.sock: Allows the container to use the host Docker engine.
+
+Then, check if Docker is running:
+bash
+docker --version
+
+Expected output:
+
+Docker version 27.2.0, build <commit-hash>
+
+
+---
+
+## *Option 2: Extract Docker Binary from the Pulled Image*
+If you want to install *Docker 27.2.0* *natively* from the pulled image:
+
+1. *Create a container from the pulled image and extract the Docker binary*
+bash
+docker create --name extract-docker nexus-nonprod-gss.uskis.dgf.gov:8262/docker:27.2.0
+docker cp extract-docker:/usr/bin/docker /usr/bin/docker
+docker cp extract-docker:/usr/bin/dockerd /usr/bin/dockerd
+docker cp extract-docker:/usr/bin/docker-init /usr/bin/docker-init
+docker cp extract-docker:/usr/bin/docker-proxy /usr/bin/docker-proxy
+docker cp extract-docker:/usr/libexec/docker /usr/libexec/docker
+docker cp extract-docker:/etc/docker /etc/docker
+
+
+2. *Set correct permissions and restart Docker*
+bash
+chmod +x /usr/bin/docker /usr/bin/dockerd /usr/bin/docker-init /usr/bin/docker-proxy
+sudo systemctl restart docker
+
+
+3. *Verify Installation*
+bash
+docker --version
+
+
+---
+
+## *Option 3: Use Docker from the Pulled Image Directly*
+If you *don’t need a native install* and want to use the pulled image as a Docker CLI:
+
+bash
+alias docker="docker run --rm -v /var/run/docker.sock:/var/run/docker.sock nexus-nonprod-gss.uskis.dgf.gov:8262/docker:27.2.0"
+
+
+Then, test:
+bash
+docker --version
+
+
+---
+
+## *Final Steps*
+- If you’re running docker-compose, ensure it’s installed:
+  bash
+  docker-compose version
+  
+
+- If Docker still doesn’t work, check logs:
+  bash
+  docker logs docker-27.2.0
+  
+
+Let me know which method works best for your pipeline! 🚀
