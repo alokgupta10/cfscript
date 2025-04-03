@@ -1,0 +1,37 @@
+Replace:
+
+cd /harness/cci_assessment_prep/
+if [ -e requirements.txt ]; then
+  pip3 install -r requirements.txt
+
+With:
+
+echo "Searching for requirements.txt files in subdirectories..."
+find /harness -type f -name "requirements.txt" | while read reqfile; do
+  echo "Installing dependencies from: $reqfile"
+  pip3 install -r "$reqfile"
+done
+
+
+
+⸻
+
+Explanation:
+	•	find /harness -type f -name "requirements.txt": searches all subdirectories under /harness for files named requirements.txt.
+	•	while read reqfile: iterates over each found file.
+	•	pip3 install -r "$reqfile": installs the dependencies from each file.
+
+⸻
+
+Optional: Add Logging
+
+To keep things clean and track what’s being installed:
+
+echo "==== Starting requirements installation ===="
+find /harness -type f -name "requirements.txt" | while read reqfile; do
+  echo "---- Installing from: $reqfile ----"
+  pip3 install -r "$reqfile"
+done
+echo "==== All requirements installed ===="
+
+Let me know if you want to skip certain subdirectories or handle requirements-dev.txt too.
