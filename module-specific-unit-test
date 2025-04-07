@@ -1,18 +1,22 @@
-Absolutely! Here’s your updated dynamic test runner script, with module-specific environment variables hardcoded and applied automatically during each test run.
+Absolutely! Here’s the full updated and resilient unit test script that:
+	•	Runs each module’s pytest tests independently
+	•	Prevents a failed test from blocking others
+	•	Collects pass/fail status per module
+	•	Prints a clear summary at the end
+	•	Optionally fails the pipeline if any module fails
 
 ⸻
 
-Final Dynamic Script with Per-Module Environment Variables
+Full Bash Script for Harness Unit Testing (Resilient)
 
 #!/bin/bash
 
 # Activate virtual environment
+python3 -m venv /harness/venv_linux
 source /harness/venv_linux/bin/activate
+
 export PATH="/harness/venv_linux/bin:$PATH"
 export PYTHONPATH=$PYTHONPATH:$(pwd)
-
-# Define cert path
-CERT_PATH="/harness/DHS_CA4_FullBundle.crt"
 
 # Define test modules and paths
 MODULES=("cci_orchestrator" "cci_assessment_prep" "cci_analyzer")
@@ -22,12 +26,12 @@ TEST_PATHS=(
   "/harness/cci_analyzer/tests/unit"
 )
 
-# Function to export env vars for each module
+# Function to export environment variables per module
 set_env_vars() {
-  local module=$1
+  local module="$1"
 
   if [[ "$module" == "cci_orchestrator" ]]; then
-    export IS_NAUTILUS_MOCKED=No
+    export IS_NAUTILUS_MOCKED=Yes
     export IS_AWS_MOCKED=No
     export IMPORTS_ARE_ABSOLUTE=No
     export IS_PYTEST=No
@@ -36,6 +40,7 @@ set_env_vars() {
     export IS_RABBITMQ_MOCKED=No
     export IS_SPLUNK_MOCKED=No
     export IS_CASM_MOCKED=No
+    export REQUESTS_CA_BUNDLE="/harness/cci_orchestrator/app/DHS_CA4_FullBundle.crt"
 
   elif [[ "$module" == "cci_assessment_prep" ]]; then
     export IS_NAUTILUS_MOCKED=Yes
@@ -47,6 +52,7 @@ set_env_vars() {
     export IS_RABBITMQ_MOCKED=No
     export IS_SPLUNK_MOCKED=Yes
     export IS_CASM_MOCKED=No
+    export REQUESTS_CA_BUNDLE="/harness/cci_assessment_prep/app/DHS_CA4_FullBundle.crt"
 
   elif [[ "$module" == "cci_analyzer" ]]; then
     export IS_NAUTILUS_MOCKED=No
@@ -58,34 +64,70 @@ set_env_vars() {
     export IS_RABBITMQ_MOCKED=No
     export IS_SPLUNK_MOCKED=No
     export IS_CASM_MOCKED=No
+    export REQUESTS_CA_BUNDLE="/harness/cci_analyzer/app/DHS_CA4_FullBundle.crt"
   fi
 }
 
-# Loop through and run each module's tests
-for i in "${!MODULES[@]}"; do
-  MODULE=${MODULES[$i]}
-  TEST_PATH=${TEST_PATHS[$i]}
+# Initialize result tracking
+declare -A TEST_RESULTS
 
-  echo "--------------------------------------"
+# Run tests per module independently
+for i in "${!MODULES[@]}"; do
+  MODULE="${MODULES[$i]}"
+  TEST_PATH="${TEST_PATHS[$i]}"
+
+  echo ""
+  echo "====================================="
   echo "Running unit tests for module: $MODULE"
   echo "Test path: $TEST_PATH"
-  echo "--------------------------------------"
+  echo "====================================="
 
   set_env_vars "$MODULE"
-  export REQUESTS_CA_BUNDLE="$CERT_PATH"
 
-  pytest "$TEST_PATH" -vs -p no:warnings
+  if pytest "$TEST_PATH" -vs -p no:warnings; then
+    TEST_RESULTS["$MODULE"]="PASS"
+  else
+    TEST_RESULTS["$MODULE"]="FAIL"
+  fi
 done
+
+# Print summary
+echo ""
+echo "========== UNIT TEST SUMMARY =========="
+for mod in "${!TEST_RESULTS[@]}"; do
+  echo "$mod => ${TEST_RESULTS[$mod]}"
+done
+echo "========================================"
+
+# Optional: fail pipeline if any module failed
+FAILED=0
+for result in "${TEST_RESULTS[@]}"; do
+  if [[ "$result" == "FAIL" ]]; then
+    FAILED=1
+  fi
+done
+
+exit $FAILED
 
 
 
 ⸻
 
-What This Does:
-	•	Automatically sets correct environment variables for each module.
-	•	Runs pytest per module with those variables applied.
-	•	Centralizes everything in a single, clean, scalable script.
+Drop it in Harness like this:
 
-You can now paste this into a Harness step or store it as a shell script in your repo for reuse.
+- step:
+    name: Run Unit Tests
+    type: Command
+    spec:
+      shell: Bash
+      command: |
+        # Paste the full script here
 
-Need it as a reusable Harness template or want to break it into parallel steps? I can help with that too.
+
+
+⸻
+
+Let me know if you’d like to:
+	•	Output logs or test reports to a file
+	•	Add email/Slack notifications for failures
+	•	Automatically upload results to an S3 bucket
