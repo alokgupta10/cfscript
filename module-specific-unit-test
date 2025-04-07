@@ -1,14 +1,8 @@
-Perfect — your goal is clear now:
-You want each module’s pytest command to run independently, regardless of pass/fail, so that:
-	•	All tests run every time.
-	•	You can fix the failing ones without rerunning the passing ones.
-	•	A failing test does not block others from running.
-
-The script I gave already supports this — but here’s a cleaner version focused specifically on your goal, with clear logic and annotations.
+Absolutely! Here’s your updated dynamic test runner script, with module-specific environment variables hardcoded and applied automatically during each test run.
 
 ⸻
 
-Final Script: Independent pytest Execution Per Module
+Final Dynamic Script with Per-Module Environment Variables
 
 #!/bin/bash
 
@@ -17,10 +11,10 @@ source /harness/venv_linux/bin/activate
 export PATH="/harness/venv_linux/bin:$PATH"
 export PYTHONPATH=$PYTHONPATH:$(pwd)
 
-# Cert path
+# Define cert path
 CERT_PATH="/harness/DHS_CA4_FullBundle.crt"
 
-# Test modules and their test paths
+# Define test modules and paths
 MODULES=("cci_orchestrator" "cci_assessment_prep" "cci_analyzer")
 TEST_PATHS=(
   "/harness/cci_orchestrator/tests/unit"
@@ -28,98 +22,70 @@ TEST_PATHS=(
   "/harness/cci_analyzer/tests/unit"
 )
 
-# Initialize results
-declare -A RESULTS
-
-# Set environment variables per module
+# Function to export env vars for each module
 set_env_vars() {
-  case "$1" in
-    "cci_orchestrator")
-      export IS_NAUTILUS_MOCKED=No
-      export IS_AWS_MOCKED=No
-      export IMPORTS_ARE_ABSOLUTE=No
-      export IS_PYTEST=No
-      export IS_MYSQL_MOCKED=No
-      export MYSQL_USE_LOCALHOST=No
-      export IS_RABBITMQ_MOCKED=No
-      export IS_SPLUNK_MOCKED=No
-      export IS_CASM_MOCKED=No
-      ;;
-    "cci_assessment_prep")
-      export IS_NAUTILUS_MOCKED=Yes
-      export IS_AWS_MOCKED=No
-      export IMPORTS_ARE_ABSOLUTE=No
-      export IS_PYTEST=No
-      export IS_MYSQL_MOCKED=Yes
-      export MYSQL_USE_LOCALHOST=No
-      export IS_RABBITMQ_MOCKED=No
-      export IS_SPLUNK_MOCKED=Yes
-      export IS_CASM_MOCKED=No
-      ;;
-    "cci_analyzer")
-      export IS_NAUTILUS_MOCKED=No
-      export IS_AWS_MOCKED=Yes
-      export IMPORTS_ARE_ABSOLUTE=Yes
-      export IS_PYTEST=No
-      export IS_MYSQL_MOCKED=No
-      export MYSQL_USE_LOCALHOST=Yes
-      export IS_RABBITMQ_MOCKED=No
-      export IS_SPLUNK_MOCKED=No
-      export IS_CASM_MOCKED=No
-      ;;
-  esac
+  local module=$1
+
+  if [[ "$module" == "cci_orchestrator" ]]; then
+    export IS_NAUTILUS_MOCKED=No
+    export IS_AWS_MOCKED=No
+    export IMPORTS_ARE_ABSOLUTE=No
+    export IS_PYTEST=No
+    export IS_MYSQL_MOCKED=No
+    export MYSQL_USE_LOCALHOST=No
+    export IS_RABBITMQ_MOCKED=No
+    export IS_SPLUNK_MOCKED=No
+    export IS_CASM_MOCKED=No
+
+  elif [[ "$module" == "cci_assessment_prep" ]]; then
+    export IS_NAUTILUS_MOCKED=Yes
+    export IS_AWS_MOCKED=No
+    export IMPORTS_ARE_ABSOLUTE=No
+    export IS_PYTEST=No
+    export IS_MYSQL_MOCKED=Yes
+    export MYSQL_USE_LOCALHOST=No
+    export IS_RABBITMQ_MOCKED=No
+    export IS_SPLUNK_MOCKED=Yes
+    export IS_CASM_MOCKED=No
+
+  elif [[ "$module" == "cci_analyzer" ]]; then
+    export IS_NAUTILUS_MOCKED=No
+    export IS_AWS_MOCKED=Yes
+    export IMPORTS_ARE_ABSOLUTE=Yes
+    export IS_PYTEST=No
+    export IS_MYSQL_MOCKED=No
+    export MYSQL_USE_LOCALHOST=Yes
+    export IS_RABBITMQ_MOCKED=No
+    export IS_SPLUNK_MOCKED=No
+    export IS_CASM_MOCKED=No
+  fi
 }
 
-# Run tests per module, log result but continue even on failure
+# Loop through and run each module's tests
 for i in "${!MODULES[@]}"; do
-  MODULE="${MODULES[$i]}"
-  TEST_PATH="${TEST_PATHS[$i]}"
-  
-  echo ""
-  echo "====================================="
-  echo "Running unit tests for: $MODULE"
-  echo "====================================="
+  MODULE=${MODULES[$i]}
+  TEST_PATH=${TEST_PATHS[$i]}
+
+  echo "--------------------------------------"
+  echo "Running unit tests for module: $MODULE"
+  echo "Test path: $TEST_PATH"
+  echo "--------------------------------------"
 
   set_env_vars "$MODULE"
   export REQUESTS_CA_BUNDLE="$CERT_PATH"
 
-  # Run tests, capture result
-  if pytest "$TEST_PATH" -vs -p no:warnings; then
-    RESULTS[$MODULE]="PASS"
-  else
-    RESULTS[$MODULE]="FAIL"
-  fi
+  pytest "$TEST_PATH" -vs -p no:warnings
 done
-
-# Summary
-echo ""
-echo "========== TEST SUMMARY =========="
-for mod in "${!RESULTS[@]}"; do
-  echo "$mod => ${RESULTS[$mod]}"
-done
-echo "=================================="
-
-# Optional: exit 1 if anything failed (can be commented out if not needed)
-FAILED=0
-for result in "${RESULTS[@]}"; do
-  [[ "$result" == "FAIL" ]] && FAILED=1
-done
-
-exit $FAILED
 
 
 
 ⸻
 
-What This Script Achieves for You:
-	•	Each module runs pytest independently.
-	•	Failures do not interrupt other modules’ tests.
-	•	You get a full summary of which passed and which failed.
-	•	CI/CD can optionally block on failure, but you still see everything in one run.
+What This Does:
+	•	Automatically sets correct environment variables for each module.
+	•	Runs pytest per module with those variables applied.
+	•	Centralizes everything in a single, clean, scalable script.
 
-Let me know if you’d like to:
-	•	Log results to a file
-	•	Run tests in parallel
-	•	Use this in a Harness step with output summary
+You can now paste this into a Harness step or store it as a shell script in your repo for reuse.
 
-Happy to help optimize!
+Need it as a reusable Harness template or want to break it into parallel steps? I can help with that too.
