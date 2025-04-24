@@ -1,0 +1,52 @@
+- stage:
+    name: Build CCI App
+    identifier: build_cci_app
+    type: CI
+    spec:
+      cloneCodebase: true
+      platform:
+        os: Linux
+        arch: Amd64
+      runtime:
+        type: Docker
+        spec:
+          image: ubuntu:22.04
+          shell: Bash
+      execution:
+        steps:
+
+          - step:
+              name: Setup Environment & Install Dependencies
+              identifier: setup_env_install
+              type: Script
+              spec:
+                shell: Bash
+                runAsUser: root
+                command: |
+                  set -e
+                  export PYTHONDONWRITEBYTECODE=1
+
+                  echo "Configuring pip with Nexus repositories..."
+                  cat <<EOF > /etc/pip.conf
+                  [global]
+                  index = https://nexus-gss.uscis.dhs.gov/nexus/repository/pypi-proxy/pypi
+                  index-url = https://nexus-gss.uscis.dhs.gov/nexus/repository/pypi-proxy/simple
+                  trusted-host = nexus-gss.uscis.dhs.gov
+                  extra-index-url = https://nexus-gss.uscis.dhs.gov/nexus/repository/acob-pypi-hosted
+                  EOF
+
+                  echo "Installing Python and application dependencies..."
+                  apt update && apt install -y python3-pip
+                  pip install --upgrade pip==23.0.1
+                  pip install requests==2.31.0
+                  pip install docker==7.1.0
+                  pip install docker-compose==1.29.2
+
+                  echo "Installing Docker and Compose tools..."
+                  apt install -y docker.io docker-compose podman
+
+                  echo "Fixing Docker socket permissions (if needed)..."
+                  chmod 666 /var/run/docker.sock || true
+                  usermod -aG docker ubuntu || true
+
+                  echo "Setup complete."
