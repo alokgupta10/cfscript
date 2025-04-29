@@ -1,0 +1,98 @@
+You’re 100% right — I now clearly see that the variables are grouped per component:
+	•	analyzer has its own block
+	•	assessment-prep has a separate set
+	•	orchestrator has its own too
+
+Mixing them into one .env file (as I did above) was incorrect if the services are not meant to share environment variables.
+
+⸻
+
+✅ Best Solution: Create 3 separate .env files — one per container
+
+Each .env file only contains the env vars intended for that component.
+
+⸻
+
+✅ Updated Final Harness Script (Correct Per-Service .env files)
+
+- step:
+    name: Build and Inject Per-Service ENV
+    identifier: build_and_inject_env_per_service
+    type: Run
+    spec:
+      shell: Sh
+      command: |
+        echo ">>> Creating .env.analyzer"
+        echo 'IMPORTS_ARE_ABSOLUTE="No"' > .env.analyzer
+        echo 'IS_PYTEST="No"' >> .env.analyzer
+        echo 'IS_NAUTILUS_MOCKED="No"' >> .env.analyzer
+        echo 'IS_CSAM_MOCKED="No"' >> .env.analyzer
+        echo 'IS_MYSQL_MOCKED="No"' >> .env.analyzer
+        echo 'MYSQL_USE_LOCALHOST="No"' >> .env.analyzer
+        echo 'IS_RABBITMQ_MOCKED="No"' >> .env.analyzer
+        echo 'RABBITMQ_USE_LOCALHOST="No"' >> .env.analyzer
+        echo 'IS_SPLUNK_MOCKED="No"' >> .env.analyzer
+        echo 'IS_AWS_MOCKED="No"' >> .env.analyzer
+        echo 'FEATURE_CSAM_ASSESSMENT_RESULTS_SKIPPED="No"' >> .env.analyzer
+        echo 'DEBUG_LEVEL_ROOT="ERROR"' >> .env.analyzer
+        echo 'DEBUG_LEVEL="DEBUG"' >> .env.analyzer
+
+        echo ">>> Creating .env.assessment"
+        echo 'IMPORTS_ARE_ABSOLUTE="No"' > .env.assessment
+        echo 'IS_PYTEST="No"' >> .env.assessment
+        echo 'IS_NAUTILUS_MOCKED="No"' >> .env.assessment
+        echo 'IS_MYSQL_MOCKED="No"' >> .env.assessment
+        echo 'MYSQL_USE_LOCALHOST="No"' >> .env.assessment
+        echo 'IS_RABBITMQ_MOCKED="No"' >> .env.assessment
+        echo 'RABBITMQ_USE_LOCALHOST="No"' >> .env.assessment
+        echo 'IS_SPLUNK_MOCKED="No"' >> .env.assessment
+        echo 'IS_AWS_MOCKED="No"' >> .env.assessment
+        echo 'IS_CSAM_MOCKED="No"' >> .env.assessment
+        echo 'DEBUG_LEVEL_ROOT="ERROR"' >> .env.assessment
+        echo 'DEBUG_LEVEL="DEBUG"' >> .env.assessment
+
+        echo ">>> Creating .env.orchestrator"
+        echo 'IMPORTS_ARE_ABSOLUTE="No"' > .env.orchestrator
+        echo 'IS_NAUTILUS_MOCKED="No"' >> .env.orchestrator
+        echo 'IS_AWS_MOCKED="No"' >> .env.orchestrator
+        echo 'PROCESS_ONE_SYSTEM_AT_A_TIME="No"' >> .env.orchestrator
+        echo 'CSAM_SYSTEM_SUBSET_ENVIRONMENTS_ARRAY="nonprod"' >> .env.orchestrator
+        echo 'CSAM_SYSTEM_SUBSET_CSAM_ID_ARRAY="7752"' >> .env.orchestrator
+        echo 'DEBUG_LEVEL_ROOT="ERROR"' >> .env.orchestrator
+        echo 'DEBUG_LEVEL="DEBUG"' >> .env.orchestrator
+
+        echo ">>> Creating docker-compose.override.yml"
+        cat <<EOF > docker-compose.override.yml
+        version: "3.8"
+        services:
+          cci-analyzer-container:
+            env_file:
+              - .env.analyzer
+          cci-assessment-prep-container:
+            env_file:
+              - .env.assessment
+          cci-orchestrator-container:
+            env_file:
+              - .env.orchestrator
+        EOF
+
+        echo ">>> Running Docker Compose"
+        docker-compose up -d --build
+
+        echo ">>> Verifying health of each container"
+        for c in $(docker ps --format '{{.Names}}'); do
+          echo "--- $c ---"
+          docker inspect --format='{{json .State.Health}}' $c || echo "No healthcheck defined"
+        done
+
+
+
+⸻
+
+Summary:
+	•	Each service now gets its own .env file
+	•	You respect the developer’s intended variable scoping
+	•	No need to touch docker-compose.yml
+	•	Docker Compose merges the override and injects variables properly
+
+Let me know if you’d like to wrap this into a complete Harness pipeline stage.
