@@ -25,6 +25,22 @@
         echo "VAULT_SERVER_USE_TOKEN=false" >> .env
         echo "REQUESTS_CA_BUNDLE=DHS_CA4_FullBundle.pem" >> .env
 
+        echo "IMPORTS_ARE_ABSOLUTE=No" >> .env
+        echo "IS_PYTEST=No" >> .env
+        echo "IS_NAUTILUS_MOCKED=Yes" >> .env
+        echo "IS_CSAM_MOCKED=No" >> .env
+        echo "IS_MYSQL_MOCKED=No" >> .env
+        echo "MYSQL_USE_LOCALHOST=No" >> .env
+        echo "IS_RABBITMQ_MOCKED=No" >> .env
+        echo "RABBITMQ_USE_LOCALHOST=No" >> .env
+        echo "IS_SPLUNK_MOCKED=No" >> .env
+        echo "IS_ANS_MOCKED=No" >> .env
+        echo "DEBUG.LEVEL.ROOT=ERROR" >> .env
+        echo "DEBUG.LEVEL=DEBUG" >> .env
+        echo "PROCESS_ONE_SYSTEM_AT_A_TIME=Yes" >> .env
+        echo "CSAM_SYSTEM_SUBSET_ENVIRONMENTS_ARRAY=prod" >> .env
+        echo "CSAM_SYSTEM_SUBSET_CSAM_ID_ARRAY=7773" >> .env
+
         echo ">>> Running docker-compose build and up"
         docker-compose --env-file .env up -d --build
 
