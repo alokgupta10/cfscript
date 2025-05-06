@@ -1,0 +1,35 @@
+- step:
+    name: Docker Compose Build and Run
+    identifier: docker_compose_build_run
+    type: Run
+    spec:
+      shell: Sh
+      command: |
+        set -e
+        echo ">>> Creating .env with required environment variables"
+        
+        echo "DEBUG_LEVEL=DEBUG" >> .env
+        echo "DEBUG_LEVEL_ROOT=ERROR" >> .env
+        echo "ENVIRONMENT_VARIATIONS=dev" >> .env
+        echo "STACK_LAYER_TYPES=api,base" >> .env
+
+        # Vault IAM role-based access
+        echo "VAULT_ACCESS_TYPE=AWS_IAM" >> .env
+        echo "DEPLOYMENT_ENVIRONMENT=dev" >> .env
+        echo "VAULT_ADDR=vault.uscis.dhs.gov" >> .env
+        echo "VAULT_ROLE=ess_nonprod_devsecops" >> .env
+        echo "VAULT_NAMESPACE=ESS_nonprod" >> .env
+        echo "VAULT_MOUNT=kv" >> .env
+        echo "VAULT_SERVER_ROLE=ess-iam-role" >> .env
+        echo "VAULT_SERVER_REGION=us-east-1" >> .env
+        echo "VAULT_SERVER_USE_TOKEN=false" >> .env
+        echo "REQUESTS_CA_BUNDLE=DHS_CA4_FullBundle.pem" >> .env
+
+        echo ">>> Running docker-compose build and up"
+        docker-compose --env-file .env up -d --build
+
+        echo ">>> Verifying container health"
+        for c in $(docker ps --format '{{.Names}}'); do
+          echo "--- $c ---"
+          docker inspect --format='{{json .State.Health}}' $c || echo "No healthcheck defined"
+        done
