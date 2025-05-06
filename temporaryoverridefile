@@ -1,0 +1,11 @@
+# Create a temporary override file to disable healthchecks
+cat <<EOF > docker-compose.override.yml
+version: '3'
+services:
+  your-service-name:
+    healthcheck:
+      disable: true
+EOF
+
+# Run docker-compose with the override
+docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
