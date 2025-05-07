@@ -1,0 +1,39 @@
+docker-compose for multi-container builds like yours, and use this approach instead:
+
+- step:
+    name: Build and Push Compose Images
+    identifier: build_push_compose
+    type: Run
+    spec:
+      shell: Sh
+      command: |
+        set -e
+        apt update && apt install -y docker.io docker-compose
+
+        echo ">>> Build images using Compose"
+        docker-compose build
+
+        echo ">>> Authenticate with Nexus"
+        echo "${{secrets.getValue("Nexus_Password")}}" | docker login ${{pipeline.variables.registry}} -u ${{secrets.getValue("Nexus_Username")}} --password-stdin
+
+        echo ">>> Tag and push images"
+        SERVICES=(cci-assessment-prep-container cci-analyzer-container cci-orchestrator-container cci-db-mysql-container cci-ui-container)
+
+        for SERVICE in "${SERVICES[@]}"; do
+          IMAGE_ID=$(docker images --format "{{.Repository}} {{.ID}}" | grep "$SERVICE" | awk '{print $2}' | head -n1)
+          if [ -n "$IMAGE_ID" ]; then
+            docker tag "$IMAGE_ID" "${{pipeline.variables.registry}}/$SERVICE:${{pipeline.variables.imageTag}}"
+            docker push "${{pipeline.variables.registry}}/$SERVICE:${{pipeline.variables.imageTag}}"
+          else
+            echo "WARNING: $SERVICE image not found"
+          fi
+        done
+
+
+⸻
+
+Best Practices This Covers:
+	•	No .env injection unless needed
+	•	Clean separation of build and push
+	•	Works with your 5-container Docker Compose setup
+	•	Secures registry credentials using Harness secrets
