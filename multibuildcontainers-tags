@@ -1,0 +1,37 @@
+- step:
+    name: Push Docker Compose Images with Multiple Tags
+    identifier: push_compose_images_dual_tag
+    type: Run
+    spec:
+      shell: Sh
+      command: |
+        set -e
+
+        echo ">>> Install Docker CLI (if needed)"
+        apt update && apt install -y docker.io
+
+        echo ">>> Login to Nexus Docker Registry"
+        echo "${NEXUS_PASSWORD}" | docker login ${REGISTRY_URL} -u ${NEXUS_USERNAME} --password-stdin
+
+        echo ">>> Tag and Push Docker Images (latest + ${BUILD_TAG})"
+        SERVICES=(cci-assessment-prep-container cci-analyzer-container cci-orchestrator-container cci-db-mysql-container cci-ui-container)
+
+        for SERVICE in "${SERVICES[@]}"; do
+          IMAGE_ID=$(docker images --format "{{.Repository}} {{.ID}}" | grep "$SERVICE" | awk '{print $2}' | head -n1)
+          if [ -n "$IMAGE_ID" ]; then
+            docker tag "$IMAGE_ID" "${REGISTRY_URL}/$SERVICE:latest"
+            docker tag "$IMAGE_ID" "${REGISTRY_URL}/$SERVICE:${BUILD_TAG}"
+
+            docker push "${REGISTRY_URL}/$SERVICE:latest"
+            docker push "${REGISTRY_URL}/$SERVICE:${BUILD_TAG}"
+          else
+            echo "WARNING: $SERVICE image not found. Skipping."
+          fi
+        done
+
+        echo ">>> All images pushed with both tags."
+      envVariables:
+        REGISTRY_URL: nexus.gss.uscis.dhs.gov/repository/your-hosted-repo
+        BUILD_TAG: <+pipeline.sequenceId> # Or <+codebase.commitSha> for Git SHA
+        NEXUS_USERNAME: <+secrets.getValue("org.Nexus_Username")>
+        NEXUS_PASSWORD: <+secrets.getValue("org.Nexus_Password")>
