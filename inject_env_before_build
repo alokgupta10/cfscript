@@ -1,0 +1,46 @@
+Thank you—that’s exactly the clarity we need.
+
+Since your containers rely on the .env_dev files being available before the app starts and you cannot modify the Dockerfile or docker-compose.yml, the only reliable workaround before docker-compose up --build is:
+
+⸻
+
+Revised and Final Harness Step (Inject Before Docker Compose Build)
+
+- step:
+    name: Inject env_dev Before Build
+    identifier: inject_env_before_build
+    type: Run
+    spec:
+      shell: Sh
+      command: |
+        set -e
+
+        echo ">>> Install Docker"
+        apt update && apt install -y docker.io
+
+        echo ">>> Create app directories and copy env_dev"
+        mkdir -p ./app/orchestrator ./app/analyzer ./app/assessment
+
+        cp ./app/env_dev ./app/orchestrator/env_dev
+        cp ./app/env_dev ./app/analyzer/env_dev
+        cp ./app/env_dev ./app/assessment/env_dev
+
+        echo ">>> Verifying env_dev is in expected paths"
+        find ./app -name "env_dev"
+
+        echo ">>> Run docker-compose build with env already in place"
+        docker-compose up -d --build
+
+        echo ">>> Done"
+
+
+⸻
+
+Why this version will work:
+	•	You ensure the file is already present before the containers are built and started.
+	•	Since main.py uses load_dotenv() without a path, it expects env_dev to be in the app’s working directory (/usr/app/src/app/env_dev).
+	•	This assumes Docker context includes ./app/... — and it should, based on your repo layout.
+
+⸻
+
+Let me know if your repo structure places the .env_dev in app/cci_analyzer/ or other submodules—I’ll adjust the cp path accordingly.
