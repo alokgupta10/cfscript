@@ -1,0 +1,25 @@
+- step:
+    name: Inject env_dev at correct path
+    identifier: inject_env_for_explicit_path
+    type: Run
+    spec:
+      shell: Sh
+      command: |
+        set -e
+
+        echo ">>> Install Docker"
+        apt update && apt install -y docker.io
+
+        echo ">>> Copy env_dev into build context for each module"
+        cp ./cci_orchestrator/app/env_dev ./cci_orchestrator/env_dev
+        cp ./cci_analyzer/app/env_dev ./cci_analyzer/env_dev
+        cp ./cci_assessment_prep/app/env_dev ./cci_assessment_prep/env_dev
+
+        echo ">>> Start containers"
+        docker-compose up -d --build
+
+        echo ">>> Check status"
+        docker ps --format "table {{.Names}}\t{{.Status}}"
+
+        echo ">>> Confirm env inside analyzer"
+        docker exec cci-analyzer-container cat /usr/app/src/app/env_dev || echo "env_dev not found"
