@@ -1,0 +1,3 @@
+cp cci_orchestrator/app/env_dev cci_orchestrator/env_dev
+cp cci_analyzer/app/env_dev cci_analyzer/env_dev
+cp cci_assessment_prep/app/env_dev cci_assessment_prep/env_dev
