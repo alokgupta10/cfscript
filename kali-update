@@ -1,0 +1,20 @@
+The error in your terminal screenshot is due to missing or outdated GPG keys for the Kali repository. Here’s how to fix it:
+
+✅ Step-by-step solution:
+
+Run the following commands:
+
+# Download and install the updated Kali Linux GPG key
+curl -fsSL https://archive.kali.org/archive-key.asc | gpg --dearmor -o /usr/share/keyrings/kali-archive-keyring.gpg
+
+# Add the Kali repo with the correct signed-by option (replace <version> as needed)
+echo "deb [signed-by=/usr/share/keyrings/kali-archive-keyring.gpg] https://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" > /etc/apt/sources.list.d/kali.list
+
+# Then update again
+apt update
+
+💡 If gpg is not installed:
+
+apt install gnupg -y
+
+Let me know if you’re not using Kali and the repo was added accidentally — we can remove it instead.
