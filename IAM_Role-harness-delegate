@@ -1,0 +1,75 @@
+Thanks — I reviewed both screenshots, and the issue is now *confirmed*:
+
+---
+
+### ❌ *Root Cause: Your current S3 bucket policy does NOT allow access to the Harness role*
+
+You only allow these roles:
+
+json
+"arn:aws:iam::255346079950:role/CloudOps",
+"arn:aws:iam::255346079950:role/Admin"
+
+
+But you're using this role in Harness:
+
+plaintext
+arn:aws:iam::759058850545:role/ACOB-harness-delegate-role
+
+
+That ARN is from *a different AWS account* (759058850545 ≠ 255346079950), and it's not in the current bucket policy — so S3 blocks it *even if the IAM role has permissions*.
+
+---
+
+### ✅ Fix: Add a statement to allow that external role
+
+Go to the *S3 bucket policy* and *add this statement* inside your Statement array:
+
+json
+{
+  "Sid": "AllowHarnessDelegateRoleAccess",
+  "Effect": "Allow",
+  "Principal": {
+    "AWS": "arn:aws:iam::759058850545:role/ACOB-harness-delegate-role"
+  },
+  "Action": [
+    "s3:GetObject",
+    "s3:ListBucket"
+  ],
+  "Resource": [
+    "arn:aws:s3:::acob-admin-files-secdev-nonprod",
+    "arn:aws:s3:::acob-admin-files-secdev-nonprod/*"
+  ]
+}
+
+
+---
+
+### ✅ Optional: Secure with Condition (recommended if cross-account)
+
+You can limit access *only when the role is used via STS* by Harness:
+
+json
+"Condition": {
+  "StringEquals": {
+    "aws:PrincipalOrgID": "o-xxxxxxxxxx"
+  }
+}
+
+
+Or use aws:SourceArn if needed.
+
+---
+
+### 🔄 After Adding:
+
+1. Save the bucket policy
+2. Retry this from Harness:
+
+   bash
+   aws s3 ls s3://acob-admin-files-secdev-nonprod/
+   
+
+---
+
+Let me know if you'd like me to validate the full merged policy.
