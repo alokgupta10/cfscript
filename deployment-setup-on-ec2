@@ -1,0 +1,38 @@
+#!/bin/bash
+set -e
+
+echo ">>> Downloading app tarball from S3 to /data/temp..."
+mkdir -p /data/temp
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/cci_harness_tar/app.tar.gz /data/temp/
+
+echo ">>> Extracting app.tar.gz into /data/cci/controls-rtm-dash..."
+tar -xzvf /data/temp/app.tar.gz -C /data/cci/controls-rtm-dash
+
+echo ">>> Copying environment files from S3..."
+
+# Top-level env and docker-compose
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/top-level.env /data/cci/controls-rtm-dash/
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/docker-compose.yml /data/cci/controls-rtm-dash/
+
+# Secret bundle
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/cci_secrets /data/cci/controls-rtm-dash/cci_secrets
+
+# Analyzer files
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/cci_analyzer/.env /data/cci/controls-rtm-dash/cci_analyzer/app/
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/cci_analyzer/Dockerfile /data/cci/controls-rtm-dash/cci_analyzer/
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/cci_analyzer/pip.conf /data/cci/controls-rtm-dash/cci_analyzer/
+
+# Assessment prep files
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/cci_assessment_prep/.env /data/cci/controls-rtm-dash/cci_assessment_prep/
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/cci_assessment_prep/pip.conf /data/cci/controls-rtm-dash/cci_assessment_prep/
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/cci_assessment_prep/Dockerfile /data/cci/controls-rtm-dash/cci_assessment_prep/
+
+# Orchestrator files
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/cci_orchestrator_env/.env /data/cci/controls-rtm-dash/cci_orchestrator/app/
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/cci_orchestrator_env/Dockerfile /data/cci/controls-rtm-dash/cci_orchestrator/
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/cci_orchestrator_env/pip.conf /data/cci/controls-rtm-dash/cci_orchestrator/
+
+# DB MySQL Dockerfile
+aws s3 cp s3://acob-admin-files-secdev-nonprod/cci-user-data/dev-env/cci_db_mysql/Dockerfile /data/cci/controls-rtm-dash/cci_db_mysql/
+
+echo "✅ Deployment setup complete on EC2"
