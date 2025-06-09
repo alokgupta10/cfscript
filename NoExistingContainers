@@ -1,0 +1,20 @@
+# >>>>> restart the containers only if any are running
+if [ "$(sudo docker ps -aq)" ]; then
+  echo ">>> Existing containers found. Restarting..."
+  sudo docker stop $(sudo docker ps -aq)
+  sudo docker rm $(sudo docker ps -aq)
+else
+  echo ">>> No existing containers found. Skipping stop/remove step."
+fi
+
+sleep 60
+
+echo ">>> Start cci app..."
+cd /data/cci/controls-rtm-dash/ && \
+(export DOCKER_CONTENT_TRUST=1 && docker-compose -f /data/cci/controls-rtm-dash/docker-compose.yml up --build -d)
+
+sleep 300
+
+echo ">>> Final container status:"
+sudo docker ps -a
+echo ">>> Deployment setup complete successfully."
