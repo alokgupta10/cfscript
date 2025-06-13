@@ -1,0 +1,82 @@
+Thanks for the clear screenshots. Based on the CloudTrail event details from your other AWS account, here’s a concise breakdown:
+
+⸻
+
+🔍 Snapshot Source Details:
+	•	Action: CreateSnapshot
+	•	Volume: vol-071240980ae5d75fe
+	•	Snapshot Description: Automated Pre-remediation Snapshot ...
+	•	User Identity Type: AssumedRole
+	•	Role ARN:
+arn:aws:iam::768450493636:role/compliance/admin-sr
+	•	Session Name:
+768450493636_Devolumizer_session
+	•	Executed by: Boto3, inside a Lambda function
+→ exec-env/AWS_Lambda_python3.12
+
+⸻
+
+✅ Root Cause (Same Pattern as Before):
+
+This is another AWS Lambda function assuming the compliance/admin-sr role and triggering automated snapshot creation as a “pre-remediation” step — exactly like your previous case.
+
+⸻
+
+🛠 What You Should Do in This Account
+
+✅ 1. Identify the Lambda Responsible
+
+Run in CloudShell:
+
+aws lambda list-functions \
+  --query "Functions[?contains(Role, 'compliance/admin-sr')].[FunctionName,Role]" \
+  --output table
+
+This tells you which Lambda is using the problematic role.
+
+⸻
+
+✅ 2. Disable or Edit the Lambda
+
+Once identified:
+	•	Inspect its code for ec2.create_snapshot()
+	•	Disable its EventBridge trigger, Config rule, or scheduled event
+
+⸻
+
+✅ 3. Apply a Deny Policy to Block Snapshot Creation
+
+To quickly stop any new snapshots:
+
+Attach this inline policy to the compliance/admin-sr role:
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Deny",
+      "Action": "ec2:CreateSnapshot",
+      "Resource": "*"
+    }
+  ]
+}
+
+This overrides all permissions and stops the snapshot creation even if the Lambda runs.
+
+⸻
+
+✅ 4. Clean Up Existing Snapshots
+
+Run this command (if needed) to delete all “Pre-remediation” snapshots:
+
+aws ec2 describe-snapshots \
+  --owner-ids self \
+  --filters "Name=description,Values=Automated Pre-remediation Snapshot*" \
+  --query "Snapshots[*].SnapshotId" \
+  --output text | \
+xargs -n 1 aws ec2 delete-snapshot --snapshot-id
+
+
+⸻
+
+Let me know if you want to automate detection of such behavior across all accounts or want a dashboard for ongoing snapshot events.
