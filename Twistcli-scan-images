@@ -1,0 +1,78 @@
+#!/bin/bash
+set -e
+
+# === Delay to ensure environment readiness ===
+sleep 60
+
+# === AWS Config ===
+AWS_REGION="us-east-1"
+S3_BUCKET="acob-admin-files-secdev-nonprod/prismacloud-scan"
+SNS_TOPIC_ARN="arn:aws:sns:us-east-1:255346079950:acob-cci-s3-bucket-monitoringTopic"
+
+# === Twistlock (Prisma Cloud) Credentials ===
+export TWISTLOCK_USER="${TWISTLOCK_USER}"
+export TWISTLOCK_PASS="${TWISTLOCK_PASS}"
+export TWISTLOCK_URL="${TWISTLOCK_URL}"
+
+# === Download twistcli only if not already present ===
+if [[ -x /usr/local/bin/twistcli ]]; then
+  echo ">>> twistcli already exists. Skipping download."
+else
+  echo ">>> twistcli not found. Downloading..."
+  sudo curl -k -u "${TWISTLOCK_USER}:${TWISTLOCK_PASS}" \
+    --output /usr/local/bin/twistcli \
+    "${TWISTLOCK_URL}/api/v1/util/twistcli"
+  sudo chmod +x /usr/local/bin/twistcli
+fi
+
+# === Collect all unique running container images ===
+echo ">>> Collecting running Docker images..."
+RUNNING_IMAGES=$(docker inspect $(docker ps -q) --format='{{.Config.Image}}' | sort -u)
+SCAN_FAILED=0
+
+# === Scan loop ===
+for IMAGE in $RUNNING_IMAGES; do
+  SAFE_IMAGE_NAME=$(echo "$IMAGE" | tr '/:.' '_')
+  OUTPUT_FILE="scan-result-${SAFE_IMAGE_NAME}.json"
+
+  echo ">>> Scanning image: $IMAGE"
+  /usr/local/bin/twistcli images scan \
+    --address "$TWISTLOCK_URL" \
+    --user "$TWISTLOCK_USER" \
+    --password "$TWISTLOCK_PASS" \
+    --output-file "$OUTPUT_FILE" \
+    "$IMAGE" || true
+
+  # Check for critical vulnerabilities
+  if [[ -f "$OUTPUT_FILE" ]]; then
+    CRITICALS=$(jq '.vulnerabilities[] | select(.severity=="critical")' "$OUTPUT_FILE" | wc -l)
+    echo ">>> $IMAGE has $CRITICALS critical vulnerabilities"
+
+    # Upload to S3
+    echo ">>> Uploading $OUTPUT_FILE to S3..."
+    aws s3 cp "$OUTPUT_FILE" "s3://${S3_BUCKET}/$OUTPUT_FILE" --region "$AWS_REGION"
+
+    if [[ "$CRITICALS" -gt 0 ]]; then
+      SCAN_FAILED=1
+    fi
+  else
+    echo ">>> WARNING: No output file generated for $IMAGE"
+    SCAN_FAILED=1
+  fi
+done
+
+# === SNS Notification ===
+if [[ "$SCAN_FAILED" -eq 1 ]]; then
+  echo ">>> Sending failure SNS notification..."
+  aws sns publish --topic-arn "$SNS_TOPIC_ARN" \
+    --subject "❌ Prisma Cloud Scan Failed" \
+    --message "Critical vulnerabilities were found in at least one image." \
+    --region "$AWS_REGION"
+  exit 1
+else
+  echo ">>> All scans completed with no critical vulnerabilities."
+  aws sns publish --topic-arn "$SNS_TOPIC_ARN" \
+    --subject "✅ Prisma Cloud Scan Passed" \
+    --message "All Docker images scanned successfully. No critical vulnerabilities found." \
+    --region "$AWS_REGION"
+fi
