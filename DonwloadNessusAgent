@@ -1,0 +1,74 @@
+Thanks for the reminder — and yes, you're using *Amazon Linux 2023 (x86\_64), which is **not compatible* with the .rpm package you installed:
+
+---
+
+### ❌ What went wrong:
+
+You installed:
+
+bash
+NessusAgent-10.9.0-amzn2.x86_64.rpm
+
+
+This is built for *Amazon Linux 2, not **Amazon Linux 2023*.
+
+As shown in your screenshots, there are *two different Nessus agents*:
+
+* ✅ NessusAgent-10.9.0-amzn2.x86_64.rpm → for *Amazon Linux 2* on x86\_64
+* ✅ NessusAgent-10.9.0-amzn2.aarch64.rpm → for *Amazon Linux 2 & 2023* on *Graviton (ARM)*
+
+---
+
+### ✅ What you actually need for Amazon Linux 2023 (x86\_64)
+
+As of now, *Tenable does not provide an official RPM built for Amazon Linux 2023 x86\_64. However, you can try using the **RHEL 9-compatible* package instead:
+
+#### 👉 Try this package:
+
+bash
+NessusAgent-10.9.0-el9.x86_64.rpm
+
+
+Download from: [https://www.tenable.com/downloads/nessus-agents](https://www.tenable.com/downloads/nessus-agents)
+
+It supports:
+
+> *Red Hat EL 9, **Alma Linux 9.5, **Rocky Linux 9, and likely works on **Amazon Linux 2023, which is based on **Fedora/RHEL 9*.
+
+---
+
+### ✅ Clean Reinstall Instructions:
+
+1. *Remove the wrong package:*
+
+bash
+sudo rpm -e NessusAgent
+
+
+2. *Download the correct RPM:*
+
+bash
+wget https://downloads.tenable.com/nessus-agents/NessusAgent-10.9.0-el9.x86_64.rpm
+
+
+3. *Import the GPG Key:*
+
+bash
+sudo rpm --import https://downloads.tenable.com/tenable-gpg-keys/RPM-GPG-KEY-Tenable-4096
+
+
+4. *Install the agent:*
+
+bash
+sudo rpm -ivh NessusAgent-10.9.0-el9.x86_64.rpm
+
+
+5. *Verify installation:*
+
+bash
+/opt/nessus_agent/sbin/nessuscli --version
+
+
+---
+
+Let me know once that’s done, and I’ll help you register the agent with Tenable.io or Tenable.sc if needed.
