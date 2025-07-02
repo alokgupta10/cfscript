@@ -1,0 +1,35 @@
+# Use base image from Nexus
+FROM nexus-nonprod-gss.uscis.dhs.gov:8132/library/python:3.11
+
+WORKDIR /usr/app/src
+
+# Ensure unbuffered stdout/stderr and avoid .pyc files
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Copy pip config and requirements
+COPY .pip.conf /root/.config/pip/pip.conf
+COPY ./requirements.txt requirements.txt
+
+# Update base system and upgrade vulnerable Debian packages
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends procps wget sqlite3 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and patch vulnerable packages
+RUN pip3 install --upgrade pip setuptools starlette
+
+# Install remaining dependencies
+RUN pip3 install --no-cache-dir --upgrade -r requirements.txt
+
+# Trust new DHS certificate
+COPY ./app/DHS_C4A_FullBundle.crt /usr/local/share/ca-certificates/
+RUN update-ca-certificates
+
+# Copy app source code
+COPY ./app /usr/app/src/app
+
+# Run the app with Uvicorn
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5001"]
