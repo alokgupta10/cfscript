@@ -1,0 +1,64 @@
+Thanks — based on your screenshot, your Nexus Docker repository is:
+
+nexus-nonprod-gss.uscis.dhs.gov:8091
+
+So now I’ll tailor the full script to push all running containers to this Nexus repository securely, assuming:
+	•	The repository name is: acob-docker-hosted
+	•	You’re using Harness Secrets Manager to store Nexus username and password
+
+⸻
+
+✅ Final Script to Push Running Containers to Nexus
+
+#!/bin/bash
+set -e
+
+# --- Config ---
+NEXUS_REPO_HOST="nexus-nonprod-gss.uscis.dhs.gov:8091"
+NEXUS_REPO_NAME="acob-docker-hosted"
+NEXUS_REPO_URL="$NEXUS_REPO_HOST/$NEXUS_REPO_NAME"
+TAG_SUFFIX="preprod-$(date +%Y%m%d%H%M)"
+
+# Nexus credentials from Harness Secrets Manager
+NEXUS_USER="${HARNESS_NEXUS_USERNAME}"
+NEXUS_PASS="${HARNESS_NEXUS_PASSWORD}"
+
+# --- Login to Nexus Docker Repo ---
+echo ">>> Logging in to Nexus..."
+echo "$NEXUS_PASS" | docker login "$NEXUS_REPO_HOST" -u "$NEXUS_USER" --password-stdin
+
+# --- Get list of unique running images ---
+RUNNING_IMAGES=$(docker ps --format '{{.Image}}' | sort -u)
+
+echo ">>> Found running images:"
+echo "$RUNNING_IMAGES"
+
+# --- Tag and Push each image ---
+for IMAGE in $RUNNING_IMAGES; do
+  IMAGE_NAME=$(basename $IMAGE | cut -d':' -f1)
+  TARGET_IMAGE="$NEXUS_REPO_URL/$IMAGE_NAME:$TAG_SUFFIX"
+
+  echo ">>> Tagging $IMAGE as $TARGET_IMAGE"
+  docker tag "$IMAGE" "$TARGET_IMAGE"
+
+  echo ">>> Pushing $TARGET_IMAGE..."
+  docker push "$TARGET_IMAGE"
+done
+
+echo "✅ All running images pushed to Nexus: $NEXUS_REPO_URL with tag $TAG_SUFFIX"
+
+
+⸻
+
+🔐 Harness Secret Variables
+
+In your Harness script step, define:
+
+Variable Name	Value	Type
+HARNESS_NEXUS_USERNAME	secrets.getValue("nexus_username")	Secret
+HARNESS_NEXUS_PASSWORD	secrets.getValue("nexus_password")	Secret
+
+
+⸻
+
+Let me know if you’re using a different image tag convention or repo name, and I’ll update it.
