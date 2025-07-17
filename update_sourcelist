@@ -1,0 +1,50 @@
+The error you're seeing in the terminal is related to **missing GPG keys** needed to verify the signature of the Kali Linux repository during `apt update`. Here's a clean fix for this:
+
+---
+
+### ✅ **Problem**
+
+```
+Missing key: 827C5865F2511B0C7F7C1A3ED65462ECB5E4C5
+```
+
+This is the GPG key used to verify the repository. If it's missing, your system will **not trust the repository metadata**, hence `apt update` fails.
+
+---
+
+### ✅ **Solution**
+
+You need to **manually fetch and add the missing GPG key**:
+
+#### 🛠️ **Step-by-step fix**
+
+1. **Fetch the missing key from the keyserver**:
+
+   ```bash
+   sudo apt install gnupg curl -y
+   curl -fsSL https://archive.kali.org/archive-key.asc | sudo gpg --dearmor -o /usr/share/keyrings/kali-archive-keyring.gpg
+   ```
+
+2. **Verify key installation (optional)**:
+
+   ```bash
+   gpg --show-keys /usr/share/keyrings/kali-archive-keyring.gpg
+   ```
+
+3. **Update your repository config (if necessary)**:
+
+   Check your `/etc/apt/sources.list` and ensure it looks like this:
+
+   ```bash
+   deb [signed-by=/usr/share/keyrings/kali-archive-keyring.gpg] http://http.kali.org/kali kali-rolling main non-free contrib
+   ```
+
+4. **Update apt again**:
+
+   ```bash
+   sudo apt update
+   ```
+
+---
+
+Let me know if you want help reviewing your `/etc/apt/sources.list` file or if `apt update` still throws warnings.
