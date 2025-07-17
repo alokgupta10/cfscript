@@ -48,3 +48,36 @@ You need to **manually fetch and add the missing GPG key**:
 ---
 
 Let me know if you want help reviewing your `/etc/apt/sources.list` file or if `apt update` still throws warnings.
+
+
+
+
+
+*********************************************************************************************************************************************************
+
+
+The error in your Kali Linux terminal shows:
+
+Missing key [...] which is needed to verify signature.
+OpenPGP signature verification failed
+
+This means the GPG key required to verify Kali’s package repository is missing.
+
+✅ To fix it, run the following commands:
+
+sudo apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 7D8D0BF6
+sudo apt update
+
+If the key in the error message is different (e.g., ED444FF07D8D0BF6 or another), replace 7D8D0BF6 with the last 8 characters of the key shown in the error.
+
+⸻
+
+💡 Alternatively (if apt-key is deprecated):
+
+Use this updated method to manually add the key:
+
+curl -fsSL https://archive.kali.org/archive-key.asc | sudo gpg --dearmor -o /usr/share/keyrings/kali-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/kali-archive-keyring.gpg] http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" | sudo tee /etc/apt/sources.list.d/kali.list
+sudo apt update
+
+Let me know if you want me to verify which key exactly is missing from your screenshot.
