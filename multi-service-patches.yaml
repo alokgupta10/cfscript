@@ -1,0 +1,95 @@
+Perfect — below are separate patches.yaml files for each of your 5 services. You can place each one under a service-specific folder in your GitHub repo or Harness manifest section, depending on how you organize your setup.
+
+⸻
+
+📁 orchestrator/patches.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: cci-orchestrator-container
+    patch:
+      spec:
+        template:
+          spec:
+            containers:
+              - name: cci-orchestrator-container
+                image: <+artifacts.orchestrator.image>
+
+
+⸻
+
+📁 analyzer/patches.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: cci-analyzer-container
+    patch:
+      spec:
+        template:
+          spec:
+            containers:
+              - name: cci-analyzer-container
+                image: <+artifacts.analyzer.image>
+
+
+⸻
+
+📁 assessmentprep/patches.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: cci-assessment-prep-container
+    patch:
+      spec:
+        template:
+          spec:
+            containers:
+              - name: cci-assessment-prep-container
+                image: <+artifacts.assessmentprep.image>
+
+
+⸻
+
+📁 db/patches.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: cci-db-mysql-container
+    patch:
+      spec:
+        template:
+          spec:
+            containers:
+              - name: cci-db-mysql-container
+                image: <+artifacts.db.image>
+
+
+⸻
+
+📁 rabbitmq/patches.yaml
+
+patches:
+  - target:
+      kind: Deployment
+      name: cci-rabbitmq-container
+    patch:
+      spec:
+        template:
+          spec:
+            containers:
+              - name: cci-rabbitmq-container
+                image: <+artifacts.rabbitmq.image>
+
+
+⸻
+
+✅ Now each microservice has its own patches.yaml that:
+	•	Leaves your original deployment.yaml untouched
+	•	Injects the dynamic image from Nexus at deploy time
+	•	Is modular and easy to version in GitHub or per service in Harness
+
+Let me know if you’d like me to generate full manifest folders (with these + base deployment.yaml/service.yaml) as a downloadable GitHub ZIP layout.
