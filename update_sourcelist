@@ -81,3 +81,47 @@ echo "deb [signed-by=/usr/share/keyrings/kali-archive-keyring.gpg] http://http.k
 sudo apt update
 
 Let me know if you want me to verify which key exactly is missing from your screenshot.
+
+
+###################################################################################################################################################################################
+###################################################################################################################################################################################
+###################################################################################################################################################################################
+
+Perfect — since your environment restricts direct internet access, here’s how to manually use the downloaded GPG key from S3 instead of running the full curl command directly on the VM:
+
+⸻
+
+✅ Step-by-Step Remediation
+
+🟩 1. Download the GPG key from your S3 bucket
+
+Replace with your bucket path:
+
+aws s3 cp s3://your-bucket-name/archive-key.asc /tmp/archive-key.asc
+
+
+⸻
+
+🟩 2. Convert and store the key in the correct location
+
+gpg --dearmor /tmp/archive-key.asc | sudo tee /usr/share/keyrings/kali-archive-keyring.gpg > /dev/null
+
+
+⸻
+
+🟩 3. Update your Kali source list with trusted key reference
+
+echo "deb [signed-by=/usr/share/keyrings/kali-archive-keyring.gpg] http://http.kali.org/kali kali-rolling main contrib non-free non-free-firmware" | sudo tee /etc/apt/sources.list
+
+
+⸻
+
+🟩 4. Clean and update APT
+
+sudo apt clean
+sudo apt update
+
+
+⸻
+
+Let me know your S3 path if you want help adjusting the script. Once this is done, your GPG signature error should be resolved.
