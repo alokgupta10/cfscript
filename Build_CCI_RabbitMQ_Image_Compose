@@ -1,0 +1,59 @@
+template:
+  name: Build_CCI_RabbitMQ_Image_Compose
+  identifier: Build_CCI_RabbitMQ_Image_Compose
+  versionLabel: "v3"
+  type: Step
+  spec:
+    type: Run
+    spec:
+      connectorRef: org.Nexus_Prod
+      image: nexus-nonprod-gss.uscis.dhs.gov:8132/library/python:3.11
+      shell: Sh
+      command: |
+        set -e
+        export COMPOSE_HTTP_TIMEOUT=180
+
+        echo "📦 Extracting image name and tag from docker-compose.yml"
+        IMAGE_NAME=$(yq e '.services."cci-rabbitmq-container".image' docker-compose.yml)
+        echo "✅ IMAGE_NAME=$IMAGE_NAME"
+
+        TAG=$(echo "$IMAGE_NAME" | awk -F: '{print $2}')
+        NAME=$(echo "$IMAGE_NAME" | awk -F: '{print $1}' | awk -F/ '{print $NF}')
+        echo "🐳 NAME=$NAME | TAG=$TAG"
+
+        echo "🔐 Creating secrets directory"
+        mkdir -p /harness/cci_secrets
+        echo "<+secrets.getValue(\"org.rabbitmq_default_pass\")>" > /harness/cci_secrets/rabbitmq_default_pass.txt
+
+        echo "⚙ Configuring pip with Nexus"
+        mkdir -p ~/.config/pip
+        cat <<EOF > ~/.config/pip/pip.conf
+[global]
+index = https://nexus-gss.uscis.dhs.gov/nexus/repository/pypi-proxy/pypi
+index-url = https://nexus-gss.uscis.dhs.gov/nexus/repository/pypi-proxy/simple
+trusted-host = nexus-gss.uscis.dhs.gov
+extra-index-url = https://nexus-gss.uscis.dhs.gov/nexus/repository/acob-pypi-hosted
+EOF
+
+        echo "⬇ Installing build tools"
+        python3 -m pip install --upgrade pip==23.0.1
+        pip3 install requests==2.31.0 docker==6.1.3
+        apt update && apt install -y docker.io docker-compose
+
+        echo "🚀 Starting Docker daemon"
+        dockerd > /dev/null 2>&1 &
+        sleep 20
+
+        docker --version
+        docker-compose version
+
+        echo "🔨 Building images using Docker Compose"
+        docker compose up -d --build
+
+        echo "📤 Logging into Nexus and pushing image: ${NAME}:${TAG}"
+        docker login ${NEXUS_REPO_URL} -u <+secrets.getValue(\"org.nexus_user\")> -p <+secrets.getValue(\"org.nexus_pass\")>
+        docker push ${NAME}:${TAG}
+
+        echo "✅ Compose-based build and push completed"
+      environmentVariables:
+        NEXUS_REPO_URL: "nexus-nonprod-gss.uscis.dhs.gov:8091"
