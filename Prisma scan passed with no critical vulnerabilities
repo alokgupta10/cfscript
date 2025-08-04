@@ -1,0 +1,124 @@
+set -e
+
+echo "🔧 Installing yq, jq, and curl"
+if command -v apt-get &> /dev/null; then
+  apt-get update && apt-get install -y jq curl
+  curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/bin/yq
+  chmod +x /usr/bin/yq
+elif command -v apk &> /dev/null; then
+  apk add --no-cache jq curl
+  curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/bin/yq
+  chmod +x /usr/bin/yq
+else
+  echo "❌ Package manager not supported. Please use image with apt or apk"
+  exit 1
+fi
+
+echo "📦 Extracting image name and tag"
+IMAGE_NAME=$(yq e '.services."cci-rabbitmq-container".image' docker-compose.yml)
+TAG=$(echo "$IMAGE_NAME" | awk -F: '{print $2}')
+NAME=$(echo "$IMAGE_NAME" | awk -F: '{print $1}' | awk -F/ '{print $NF}')
+REPORT_PATH="/harness/${NAME}-${TAG}-scan-results.json"
+
+echo "💾 Saving image as TAR"
+docker save -o /harness/${NAME}-${TAG}.tar ${NAME}:${TAG}
+
+echo "🔐 Downloading twistcli"
+curl -u ${TWISTLOCK_USER}:${TWISTLOCK_PASS} -o twistcli "${TWISTLOCK_URL}/api/v1/util/twistcli"
+chmod +x twistcli
+
+echo "🛡 Running Prisma scan"
+./twistcli images scan --tarball /harness/${NAME}-${TAG}.tar \
+  --address ${TWISTLOCK_URL} \
+  --user ${TWISTLOCK_USER} \
+  --password ${TWISTLOCK_PASS} \
+  --output-file "$REPORT_PATH"
+
+echo "📊 Checking for critical vulnerabilities"
+CRITICALS=$(jq '.vulnerabilities[] | select(.severity == "critical")' "$REPORT_PATH" | wc -l)
+
+echo "☁ Uploading report to S3"
+aws s3 cp "$REPORT_PATH" "s3://your-prisma-scan-reports-bucket/prisma-reports/${NAME}-${TAG}-scan-results.json"
+
+if [ "$CRITICALS" -gt 0 ]; then
+  echo "❌ Prisma scan failed with $CRITICALS critical vulnerabilities"
+  aws sns publish \
+    --topic-arn "arn:aws:sns:us-east-1:123456789012:PrismaScanStatusTopic" \
+    --subject "Prisma Scan FAILED" \
+    --message "❌ Prisma scan for image ${NAME}:${TAG} FAILED due to critical vulnerabilities. See: s3://your-prisma-scan-reports-bucket/prisma-reports/${NAME}-${TAG}-scan-results.json"
+  exit 1
+else
+  echo "✅ Prisma scan passed"
+  aws sns publish \
+    --topic-arn "arn:aws:sns:us-east-1:123456789012:PrismaScanStatusTopic" \
+    --subject "Prisma Scan PASSED" \
+    --message "✅ Prisma scan for image ${NAME}:${TAG} passed. See: s3://your-prisma-scan-reports-bucket/prisma-reports/${NAME}-${TAG}-scan-results.json"
+fi
+//////////////////////////////////
+
+
+
+template:
+  name: PrismaScanBeforePush
+  identifier: PRISMA_SCAN_PRE_PUSH
+  versionLabel: "v2"
+  type: Step
+  spec:
+    type: Run
+    spec:
+      connectorRef: org.Nexus_Prod
+      image: <+pipeline.variables.BUILD_IMAGE>  # Must support apt or apk (e.g., python:3.11-slim or alpine)
+      shell: Sh
+      command: |
+        set -e
+
+        echo "🔧 Installing yq, jq, and curl"
+        if command -v apt-get &> /dev/null; then
+          apt-get update && apt-get install -y jq curl
+          curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/bin/yq
+          chmod +x /usr/bin/yq
+        elif command -v apk &> /dev/null; then
+          apk add --no-cache jq curl
+          curl -L https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/bin/yq
+          chmod +x /usr/bin/yq
+        else
+          echo "❌ Package manager not supported. Please use an image with apt or apk."
+          exit 1
+        fi
+
+        echo "📦 Extracting image name and tag from docker-compose.yml"
+        IMAGE_NAME=$(yq e '.services."cci-rabbitmq-container".image' docker-compose.yml)
+        echo "✅ IMAGE_NAME=$IMAGE_NAME"
+
+        TAG=$(echo "$IMAGE_NAME" | awk -F: '{print $2}')
+        NAME=$(echo "$IMAGE_NAME" | awk -F: '{print $1}' | awk -F/ '{print $NF}')
+        echo "🐳 NAME=$NAME | TAG=$TAG"
+
+        echo "💾 Saving Docker image to tar"
+        docker save -o /harness/${NAME}-${TAG}.tar ${NAME}:${TAG}
+
+        echo "🔐 Downloading twistcli"
+        curl -u ${TWISTLOCK_USER}:${TWISTLOCK_PASS} -o twistcli "${TWISTLOCK_URL}/api/v1/util/twistcli"
+        chmod +x twistcli
+
+        echo "🛡 Scanning image with Prisma Cloud"
+        ./twistcli images scan --tarball /harness/${NAME}-${TAG}.tar \
+          --address ${TWISTLOCK_URL} \
+          --user ${TWISTLOCK_USER} \
+          --password ${TWISTLOCK_PASS} \
+          --output-file /harness/scan-results.json
+
+        echo "📊 Checking scan results for critical vulnerabilities"
+        CRITICALS=$(jq '.vulnerabilities[] | select(.severity == "critical")' /harness/scan-results.json | wc -l)
+
+        echo "🚨 Critical vulnerabilities found: $CRITICALS"
+        if [ "$CRITICALS" -gt 0 ]; then
+          echo "❌ Prisma scan failed: Critical vulnerabilities detected"
+          exit 1
+        fi
+
+        echo "✅ Prisma scan passed with no critical vulnerabilities"
+      envVariables:
+        TWISTLOCK_URL: "<+secrets.getValue(\"org.hashicorpvault.NonProd_Hashicorp_Vault/sharedtwistlock-nonprod-host\")>"
+        TWISTLOCK_USER: "<+secrets.getValue(\"org.hashicorpvault.NonProd_Hashicorp_Vault/sharedtwistlock-nonprod-username\")>"
+        TWISTLOCK_PASS: "<+secrets.getValue(\"org.hashicorpvault.NonProd_Hashicorp_Vault/sharedtwistlock-nonprod-password\")>"
